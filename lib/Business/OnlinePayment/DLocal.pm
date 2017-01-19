@@ -158,6 +158,48 @@ $document – unique transaction ID at AstroPay (x_document)
 
 sub submit {
     my $self = shift;
+
+    $self->map_fields;
+
+    $self->remap_fields(
+        login           => 'x_login',
+        transaction_key => 'x_trans_key',
+        version         => 'x_version',
+        country         => 'x_country',
+        invoice_number  => 'x_invoice',
+        amount          => 'x_amount',
+        currency        => 'x_currency',
+        description     => 'x_description',
+        device_id       => 'x_device_id',
+        cpf             => 'x_cpf',           # govt id number
+        name            => 'x_name',          # needs a joiner of this in map fields
+        email           => 'x_email',
+        card_number     => 'x_number',
+        expiration      => 'x_exp_month',     # needs to be broken in two
+        expiration      => 'x_exp_year',
+        cvv2            => 'x_cvv',
+        bank            => 'x_bank',          # looks to be card, but others... different key
+        issuer          => 'cc_issuer',       # same
+        installments    => 'cc_installments', # similar breakout one-shot vs a number
+        descriptor      => 'cc_descriptor',
+        customer_ip     => 'x_ip',
+        confirm         => 'x_confirm',       # a confirmation URL if passed, similar to paypal IPN
+        birthdate       => 'x_bdate',         # WTF is this needed
+        customer_id     => 'x_iduser',
+        address         => 'x_address',
+        zip             => 'x_zip',
+        city            => 'x_city',
+        state           => 'x_state',
+        phone           => 'x_phone',
+        merch_id        => 'x_merchant_id',   # sub-merchant id, lmk if you ever use this, no normal BOP standard here
+
+        
+
+        
+        type              => 'x_Method',
+
+    );
+
     my ( $page, $status_code, %headers ) = $self->https_post( { } , $post_data);
 }
 
@@ -221,4 +263,45 @@ sub server_response_dangerous {
     return $self->{server_response_dangerous};
 }
 
+
+=method set_defaults
+
+=cut
+
+sub set_defaults {
+    my $self = shift;
+    my %opts = @_;
+
+    $self->build_subs(
+        qw( order_number card_token api_version )
+    );
+
+    $self->test_transaction(0);
+
+    if ( $opts{debug} ) {
+        $self->debug( $opts{debug} );
+        delete $opts{debug};
+    }
+
+    ## load in the defaults
+    my %_defaults = ();
+    foreach my $key ( keys %opts ) {
+        $key =~ /^default_(\w*)$/ or next;
+        $_defaults{$1} = $opts{$key};
+        delete $opts{$key};
+    }
+
+    $self->{_scrubber} = \&_default_scrubber;
+    if( defined $_defaults{'Scrubber'} ) {
+        my $code = $_defaults{'Scrubber'};
+        if( ref($code) ne 'CODE' ) {
+            warn('default_Scrubber is not a code ref');
+        }
+        else {
+            $self->{_scrubber} = $code;
+        }
+    }
+
+    $self->api_version('4.0')                   unless $self->api_version;
+}
 1;
