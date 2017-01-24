@@ -220,13 +220,14 @@ sub submit {
     my $post_data;
     if ($content{'action'} eq 'Normal Authorization') {
         my $message = '';
-        foreach my $key ('x_email','cc_number','cc_exp_month','cc_cvv','cc_exp_year','x_cpf','x_country') { $message .= $content{$remap_fields{$key}}; } # $email.$number.$month.$cvv.$year.$cpf.$country;
-warn $message;
+        foreach my $key (
+            'x_invoice','x_amount','x_currency',
+            'x_email','cc_number','cc_exp_month','cc_cvv','cc_exp_year','x_cpf','x_country'
+        ) { $message .= $content{$remap_fields{$key}}; } # $email.$number.$month.$cvv.$year.$cpf.$country;
         $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
         # PHP
         # $message = $email.$number.$month.$cvv.$year.$cpf.$country;
         # strtoupper(hash_hmac('sha256', pack('A*', $message), pack('A*',$content{'password2'})));
-warn $content{'control'};
         foreach my $key ('x_login','x_trans_key','x_version','x_invoice','x_amount','x_currency','x_description','x_device_id','x_country','x_cpf','x_name','x_email','cc_number','cc_exp_month','cc_exp_year','cc_cvv','cc_token','control') {
             $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
         }

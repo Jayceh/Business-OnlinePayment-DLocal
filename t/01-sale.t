@@ -62,7 +62,6 @@ my $data = {
  card_number         => '4111111111111111',
  cvv2                => '123',
  cpf => '123456789',
- card_token          => '1',
  expiration          => '12/25',
  vindicia_nvp        => {
      custom_test => 'BOP:DLocal unit test',
