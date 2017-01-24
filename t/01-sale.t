@@ -10,6 +10,7 @@ use Time::HiRes;
 
 my $username = $ENV{PERL_BUSINESS_DLOCAL_USERNAME} || 'mocked';
 my $password = $ENV{PERL_BUSINESS_DLOCAL_PASSWORD} || 'mocked';
+my $secret   = $ENV{PERL_BUSINESS_DLOCAL_SECRET}   || 'mocked';
 
 if ($username eq 'mocked') {
     diag '';
@@ -20,12 +21,14 @@ if ($username eq 'mocked') {
     diag '';
     diag 'export PERL_BUSINESS_DLOCAL_USERNAME=your_test_user';
     diag 'export PERL_BUSINESS_DLOCAL_PASSWORD=your_test_password';
+    diag 'export PERL_BUSINESS_DLOCAL_PASSWORD=your_test_secret';
     diag '';
     diag '';
 }
 
 plan skip_all => 'No credentials set in the environment.'
   . ' Set PERL_BUSINESS_DLOCAL_USERNAME and '
+  . ' PERL_BUSINESS_DLOCAL_SECRET and '
   . 'PERL_BUSINESS_DLOCAL_PASSWORD to run this test.'
   unless ( $username && $password );
 
@@ -35,7 +38,7 @@ $client->test_transaction(1);    # test, dont really charge
 my $data = {
  login          => $username,
  password       => $password,
- password2      => 'VOrG5yNQk6NGzX9M8rQJUffV5E5yeDDpx',
+ password2      => $secret,
  ##### action         => 'fetchByMerchantTransactionId',
  description    => 'Business::OnlinePayment visa test',
 
