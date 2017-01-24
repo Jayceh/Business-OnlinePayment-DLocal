@@ -251,6 +251,7 @@ sub submit {
     my $res = $self->_parse_xml_response( $response->{'content'}, $response->{'status'} );
     $self->is_success( $res->{'result'} eq '9' );
     $self->order_number( $res->{'x_document'} );
+use Data::Dumper; warn Dumper $response;
     $res;
 }
 
@@ -264,7 +265,7 @@ sub _parse_xml_response {
     }
     else {
         $status_code =~ s/[\r\n\s]+$//; # remove newline so you can see the error in a linux console
-        if ( $status_code =~ /^(?:900|599)/ ) { $status_code .= ' - verify Litle has whitelisted your IP'; }
+        if ( $status_code =~ /^(?:900|599)/ ) { $status_code .= ' - verify DLocal has whitelisted your IP'; }
         die "CONNECTION FAILURE: $status_code";
     }
     return $response;
