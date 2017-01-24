@@ -8,10 +8,11 @@ use Digest::SHA qw(hmac_sha256_hex);
 use HTTP::Tiny;
 use URI::Escape;
 use XML::Simple;
+use JSON;
 use vars qw(@ISA $me $VERSION);
 use Log::Scrubber qw(disable $SCRUBBER scrubber :Carp scrubber_add_scrubber);
 @ISA     = qw(Business::OnlinePayment::HTTPS);
-$me      = 'Business::OnlinePayment::Litle';
+$me      = 'Business::OnlinePayment::DLocal';
 $VERSION = '0.001';
 
 # VERSION
@@ -205,7 +206,7 @@ sub submit {
         merch_id        => 'x_merchant_id',   # sub-merchant id, lmk if you ever use this, no normal BOP standard here
         control         => 'control',
 
-        type            => 'x_Method',
+        type            => 'type',
     );
     my %remap_fields;
     foreach my $key (keys %map_fields) { $remap_fields{$map_fields{$key}} = $key; }
@@ -217,6 +218,7 @@ sub submit {
     }
     $content{'name'} = ($content{'fname'}//'').' '.($content{'lname'}//'');
     $content{'version'} //= $self->api_version;
+    $content{'type'} = 'json';
 
     my $post_data;
     if ($content{'action'} eq 'Normal Authorization') {
@@ -230,7 +232,7 @@ sub submit {
         # strtoupper(hash_hmac('sha256', pack('A*', $message), pack('A*',$content{'password2'})));
         foreach my $key (
             'x_login','x_trans_key','x_version','x_invoice','x_amount','x_currency','x_description','x_device_id','x_country',
-            'x_cpf','x_name','x_email','cc_number','cc_exp_month','cc_exp_year','cc_cvv','cc_token','control'
+            'x_cpf','x_name','x_email','cc_number','cc_exp_month','cc_exp_year','cc_cvv','cc_token','control','type'
         ) {
             $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
         }
@@ -248,10 +250,11 @@ sub submit {
         content => $post_data,
     } );
     $self->server_response( $response->{'content'} );
-    my $res = $self->_parse_xml_response( $response->{'content'}, $response->{'status'} );
+    my $res = substr($response->{'content'},0,1) eq '{'
+        ? decode_json( $response->{'content'} )
+        : $self->_parse_xml_response( $response->{'content'}, $response->{'status'} ); # just in case
     $self->is_success( $res->{'result'} eq '9' );
     $self->order_number( $res->{'x_document'} );
-use Data::Dumper; warn Dumper $response;
     $res;
 }
 
