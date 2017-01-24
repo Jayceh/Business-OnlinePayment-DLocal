@@ -4,7 +4,7 @@ use 5.010;
 use strict;
 use warnings;
 
-use Test::More tests => 2;
+use Test::More tests => 4;
 use Module::Runtime qw( use_module );
 use Time::HiRes;
 
@@ -76,7 +76,25 @@ foreach my $n ( 1 .. 3, 3 ) { # we do "3" twice to test what an error message lo
     push @$trans, \%new_data;
 }
 
-SKIP: { # Sale
+SKIP: { # Save
+    local $data->{'action'} = 'Tokenize';
+    $client->content(%$data);
+    push @{$client->{'mocked'}}, {
+        action => 'billTransactions',
+        login => 'mocked',
+        resp => 'ok_duplicate',
+    } if $data->{'login'} eq 'mocked';
+    my $ret = $client->submit();
+    subtest 'Tokenize' => sub {
+        plan tests => 2;
+        ok($client->is_success, 'Transaction is_success');
+        ok($client->card_token, 'Transaction card_token found');
+    } or diag explain $client->server_request,$client->server_response;
+    $data->{'card_token'} = $client->card_token; # all tests below will use this
+}
+
+SKIP: { # Sale with token
+    skip 'No card_token was found', 1 unless $data->{'card_token'};
     local $data->{'action'} = 'Normal Authorization';
     $client->content(%$data);
     push @{$client->{'mocked'}}, {
@@ -85,11 +103,34 @@ SKIP: { # Sale
         resp => 'ok_duplicate',
     } if $data->{'login'} eq 'mocked';
     my $ret = $client->submit();
-    subtest 'Normal Authorization' => sub {
+    subtest 'Normal Authorization with card_token' => sub {
         plan tests => 3;
-        ok(!$client->is_success, 'Transaction is_success was false, as expected');
+        ok($client->is_success, 'Transaction is_success');
         ok($client->order_number, 'Transaction order_number found');
-        subtest 'A transaction error exist, as expected' => sub {
+        subtest 'A transaction result exists, as expected' => sub {
+            plan tests => 2;
+            isa_ok($ret,'HASH');
+            return unless ref $ret eq 'HASH';
+            cmp_ok($ret->{'result'}, 'eq', '9', 'Found the expected result');
+        };
+    } or diag explain $client->server_request,$client->server_response;
+}
+
+SKIP: { # Sale no token
+    local $data->{'action'} = 'Normal Authorization';
+    delete local $data->{'card_token'};
+    $client->content(%$data);
+    push @{$client->{'mocked'}}, {
+        action => 'billTransactions',
+        login => 'mocked',
+        resp => 'ok_duplicate',
+    } if $data->{'login'} eq 'mocked';
+    my $ret = $client->submit();
+    subtest 'Normal Authorization, with full card' => sub {
+        plan tests => 3;
+        ok(!$client->is_success, 'Transaction is_success failed as expected');
+        ok($client->order_number, 'Transaction order_number found');
+        subtest 'A transaction error exists, as expected' => sub {
             plan tests => 2;
             isa_ok($ret,'HASH');
             return unless ref $ret eq 'HASH';

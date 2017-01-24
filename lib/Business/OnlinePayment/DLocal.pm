@@ -29,6 +29,7 @@ sub _info {
         supported_types   => ['CC'],
         supported_actions => {
             CC => [
+                'Tokenzie',
                 'Normal Authorization',
                 'Post Authorization',
                 'Authorization Only',
@@ -189,7 +190,7 @@ sub submit {
         expirationMM    => 'cc_exp_month',    # needs to be broken in two
         expirationYY    => 'cc_exp_year',
         cvv2            => 'cc_cvv',
-        token           => 'cc_token',
+        card_token      => 'cc_token',
         bank            => 'x_bank',          # looks to be card, but others... different key
         issuer          => 'cc_issuer',       # same
         installments    => 'cc_installments', # similar breakout one-shot vs a number
@@ -221,11 +222,18 @@ sub submit {
     $content{'type'} = 'json';
 
     my $post_data;
-    if ($content{'action'} eq 'Normal Authorization') {
+    my $url;
+    my $res;
+    if (lc($content{'action'})eq 'normal authorization') {
+        $url = 'https://'.$self->server.'/api_curl/cc/sale';
+        foreach ('x_country','x_cpf','x_name','x_email','cc_number','cc_exp_month','cc_exp_year','cc_cvv') {
+            # tokens fail if you try and send these as well
+            delete $content{$remap_fields{$_}} if $content{'card_token'};
+        }
         my $message = '';
         foreach my $key (
-            'x_invoice','x_amount','x_currency','x_email','cc_number','cc_exp_month','cc_cvv','cc_exp_year','x_cpf','x_country'
-        ) { $message .= $content{$remap_fields{$key}}; } # $email.$number.$month.$cvv.$year.$cpf.$country;
+            'x_invoice','x_amount','x_currency','x_email','cc_number','cc_exp_month','cc_cvv','cc_exp_year','x_cpf','x_country','cc_token'
+        ) { $message .= $content{$remap_fields{$key}}//''; } # $invoice.$amount.$currency.$email.$number.$month.$cvv.$year.$cpf.$country.$token;
         $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
         # PHP
         # $message = $email.$number.$month.$cvv.$year.$cpf.$country;
@@ -236,10 +244,37 @@ sub submit {
         ) {
             $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
         }
+        $res = $self->_send_request($url,$post_data);
+        $self->is_success( defined $res->{'result'} && $res->{'result'} eq '9' ? 1 : 0 );
+        $self->order_number( $res->{'x_document'} );
+    } elsif (lc($content{'action'})eq 'tokenize') {
+        $url = 'https://'.$self->server.'/api_curl/cc/save';
+        my $message = '';
+        foreach my $key (
+            'x_email','cc_number','cc_exp_month','cc_cvv','cc_exp_year','x_cpf','x_country'
+        ) { $message .= $content{$remap_fields{$key}}; } # $email.$number.$month.$cvv.$year.$cpf.$country;
+        $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
+        # PHP
+        # $message = $email.$number.$month.$cvv.$year.$cpf.$country;
+        # strtoupper(hash_hmac('sha256', pack('A*', $message), pack('A*',$content{'password2'})));
+        foreach my $key (
+            'x_login','x_trans_key','x_version','x_country','x_cpf','x_name','x_email','cc_number','cc_exp_month',
+            'cc_exp_year','cc_cvv','control','type'
+        ) {
+            $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
+        }
+        $res = $self->_send_request($url,$post_data);
+        $self->is_success( $res->{'cc_token'} ? 1 : 0 );
+        $self->card_token( $res->{'cc_token'} );
+    } else {
+        die 'Invalid action';
     }
-    chop($post_data);
 
-    my $url = 'https://'.$self->server.$self->path;
+    $res;
+}
+
+sub _send_request {
+    my ($self,$url,$post_data) = @_;
     $self->server_request( $url.'?'.$post_data ); # yeah it's in GET, but it's easy to read that way
     my $verify_ssl = 1;
     my $response = HTTP::Tiny->new( verify_SSL=>$verify_ssl )->request('POST', $url, {
@@ -253,8 +288,7 @@ sub submit {
     my $res = substr($response->{'content'},0,1) eq '{'
         ? decode_json( $response->{'content'} )
         : $self->_parse_xml_response( $response->{'content'}, $response->{'status'} ); # just in case
-    $self->is_success( $res->{'result'} eq '9' );
-    $self->order_number( $res->{'x_document'} );
+use Data::Dumper; warn Dumper $res;
     $res;
 }
 
