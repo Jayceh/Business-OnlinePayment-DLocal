@@ -179,6 +179,7 @@ sub submit {
         version         => 'x_version',
         country         => 'x_country',
         invoice_number  => 'x_invoice',
+        order_number    => 'x_document',
         amount          => 'x_amount',
         currency        => 'x_currency',
         description     => 'x_description',
@@ -252,11 +253,8 @@ sub submit {
         my $message = '';
         foreach my $key (
             'x_email','cc_number','cc_exp_month','cc_cvv','cc_exp_year','x_cpf','x_country'
-        ) { $message .= $content{$remap_fields{$key}}; } # $email.$number.$month.$cvv.$year.$cpf.$country;
+        ) { $message .= $content{$remap_fields{$key}}; }
         $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
-        # PHP
-        # $message = $email.$number.$month.$cvv.$year.$cpf.$country;
-        # strtoupper(hash_hmac('sha256', pack('A*', $message), pack('A*',$content{'password2'})));
         foreach my $key (
             'x_login','x_trans_key','x_version','x_country','x_cpf','x_name','x_email','cc_number','cc_exp_month',
             'cc_exp_year','cc_cvv','control','type'
@@ -266,6 +264,21 @@ sub submit {
         $res = $self->_send_request($url,$post_data);
         $self->is_success( $res->{'cc_token'} ? 1 : 0 );
         $self->card_token( $res->{'cc_token'} );
+    } elsif (lc($content{'action'})eq 'credit') {
+        $url = 'https://'.$self->server.'/api_curl/cc/refund';
+        my $message = '';
+        foreach my $key (
+            'x_document','x_invoice','x_amount','x_currency'
+        ) { $message .= $content{$remap_fields{$key}}; }
+        $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
+        foreach my $key (
+            'x_login','x_trans_key','x_version','x_invoice','x_document','x_amount','x_currency','control','type',
+        ) {
+            $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
+        }
+        $res = $self->_send_request($url,$post_data);
+        $self->is_success( defined $res->{'result'} && $res->{'result'} eq '1' ? 1 : 0 );
+        $self->order_number( $res->{'x_document'} );
     } else {
         die 'Invalid action';
     }
@@ -288,7 +301,7 @@ sub _send_request {
     my $res = substr($response->{'content'},0,1) eq '{'
         ? decode_json( $response->{'content'} )
         : $self->_parse_xml_response( $response->{'content'}, $response->{'status'} ); # just in case
-use Data::Dumper; warn Dumper $res;
+#use Data::Dumper; warn Dumper $res;
     $res;
 }
 

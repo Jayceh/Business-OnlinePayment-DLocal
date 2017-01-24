@@ -4,7 +4,7 @@ use 5.010;
 use strict;
 use warnings;
 
-use Test::More tests => 4;
+use Test::More tests => 5;
 use Module::Runtime qw( use_module );
 use Time::HiRes;
 
@@ -76,6 +76,29 @@ foreach my $n ( 1 .. 3, 3 ) { # we do "3" twice to test what an error message lo
     push @$trans, \%new_data;
 }
 
+SKIP: { # Sale no token
+    local $data->{'action'} = 'Normal Authorization';
+    delete local $data->{'card_token'};
+    $client->content(%$data);
+    push @{$client->{'mocked'}}, {
+        action => 'billTransactions',
+        login => 'mocked',
+        resp => 'ok_duplicate',
+    } if $data->{'login'} eq 'mocked';
+    my $ret = $client->submit();
+    subtest 'Normal Authorization, with full card' => sub {
+        plan tests => 3;
+        ok(!$client->is_success, 'Transaction is_success failed as expected');
+        ok($client->order_number, 'Transaction order_number found');
+        subtest 'A transaction error exists, as expected' => sub {
+            plan tests => 2;
+            isa_ok($ret,'HASH');
+            return unless ref $ret eq 'HASH';
+            cmp_ok($ret->{'result'}, 'eq', '8', 'Found the expected error result');
+        };
+    } or diag explain $client->server_request,$client->server_response;
+}
+
 SKIP: { # Save
     local $data->{'action'} = 'Tokenize';
     $client->content(%$data);
@@ -114,11 +137,12 @@ SKIP: { # Sale with token
             cmp_ok($ret->{'result'}, 'eq', '9', 'Found the expected result');
         };
     } or diag explain $client->server_request,$client->server_response;
+    $data->{'order_number'} = $client->order_number;
 }
 
-SKIP: { # Sale no token
-    local $data->{'action'} = 'Normal Authorization';
-    delete local $data->{'card_token'};
+SKIP: { # Refund
+    skip 'No order_number was found', 1 unless $data->{'order_number'};
+    local $data->{'action'} = 'Credit';
     $client->content(%$data);
     push @{$client->{'mocked'}}, {
         action => 'billTransactions',
@@ -126,15 +150,15 @@ SKIP: { # Sale no token
         resp => 'ok_duplicate',
     } if $data->{'login'} eq 'mocked';
     my $ret = $client->submit();
-    subtest 'Normal Authorization, with full card' => sub {
+    subtest 'Refund' => sub {
         plan tests => 3;
-        ok(!$client->is_success, 'Transaction is_success failed as expected');
+        ok($client->is_success, 'Transaction is_success');
         ok($client->order_number, 'Transaction order_number found');
-        subtest 'A transaction error exists, as expected' => sub {
+        subtest 'A transaction result exists, as expected' => sub {
             plan tests => 2;
             isa_ok($ret,'HASH');
             return unless ref $ret eq 'HASH';
-            cmp_ok($ret->{'result'}, 'eq', '8', 'Found the expected error result');
+            cmp_ok($ret->{'result'}, 'eq', '1', 'Found the expected result');
         };
     } or diag explain $client->server_request,$client->server_response;
 }
