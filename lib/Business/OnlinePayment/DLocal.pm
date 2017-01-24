@@ -214,12 +214,13 @@ sub submit {
         $content{'expirationMM'} = $1;
         $content{'expirationYY'} = '20'.$2;
     }
+    $content{'name'} = ($content{'fname'}//'').' '.($content{'lname'}//'');
     $content{'version'} //= $self->api_version;
 
     my $post_data;
     if ($content{'action'} eq 'Normal Authorization') {
         my $message = '';
-        foreach my $key ('x_email','cc_number','cc_exp_month','cc_cvv','cc_exp_year','x_cpf','x_country') { $message .= $content{$remap_fields{$key}}.'|'; } # $email.$number.$month.$cvv.$year.$cpf.$country;
+        foreach my $key ('x_email','cc_number','cc_exp_month','cc_cvv','cc_exp_year','x_cpf','x_country') { $message .= $content{$remap_fields{$key}}; } # $email.$number.$month.$cvv.$year.$cpf.$country;
 warn $message;
         $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
         # PHP
