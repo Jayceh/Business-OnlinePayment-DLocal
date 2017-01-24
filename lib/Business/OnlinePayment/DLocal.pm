@@ -4,8 +4,14 @@ use warnings;
 
 use Business::OnlinePayment;
 use Business::OnlinePayment::HTTPS;
-use Digest::SHA qw(hmac_sha256);
+use Digest::SHA qw(hmac_sha256_hex);
+use HTTP::Tiny;
+use URI::Escape;
+use vars qw(@ISA $me $VERSION);
 use Log::Scrubber qw(disable $SCRUBBER scrubber :Carp scrubber_add_scrubber);
+@ISA     = qw(Business::OnlinePayment::HTTPS);
+$me      = 'Business::OnlinePayment::Litle';
+$VERSION = '0.001';
 
 # VERSION
 # PODNAME: Business::OnlinePayment::DLocal
@@ -51,11 +57,11 @@ sub test_transaction {
     if($testMode) {
         $self->server('sandbox.astropaycard.com');
         $self->port('443');
-        $self->path('/api_curl');
+        $self->path('/api_curl/cc/sale');
     } else {
         $self->server('astropaycard.com');
         $self->port('443');
-        $self->path('/api_curl');
+        $self->path('/api_curl/cc/sale');
     }
     return $self->{'test_transaction'};
 }
@@ -156,14 +162,17 @@ $document – unique transaction ID at AstroPay (x_document)
 # CURRENCY EXCHANGE
 # INSTALLMENTS
 
+sub build_control {
+    'TODO not built yet';
+}
+
 sub submit {
     my $self = shift;
 
-    $self->map_fields;
-
-    $self->remap_fields(
+    my %map_fields = (
         login           => 'x_login',
-        transaction_key => 'x_trans_key',
+        password        => 'x_trans_key',
+        password2       => 'x_secret_key',
         version         => 'x_version',
         country         => 'x_country',
         invoice_number  => 'x_invoice',
@@ -174,10 +183,11 @@ sub submit {
         cpf             => 'x_cpf',           # govt id number
         name            => 'x_name',          # needs a joiner of this in map fields
         email           => 'x_email',
-        card_number     => 'x_number',
-        expiration      => 'x_exp_month',     # needs to be broken in two
-        expiration      => 'x_exp_year',
-        cvv2            => 'x_cvv',
+        card_number     => 'cc_number',
+        expirationMM    => 'cc_exp_month',    # needs to be broken in two
+        expirationYY    => 'cc_exp_year',
+        cvv2            => 'cc_cvv',
+        token           => 'cc_token',
         bank            => 'x_bank',          # looks to be card, but others... different key
         issuer          => 'cc_issuer',       # same
         installments    => 'cc_installments', # similar breakout one-shot vs a number
@@ -192,15 +202,49 @@ sub submit {
         state           => 'x_state',
         phone           => 'x_phone',
         merch_id        => 'x_merchant_id',   # sub-merchant id, lmk if you ever use this, no normal BOP standard here
+        control         => 'control',
 
-        
-
-        
-        type              => 'x_Method',
-
+        type            => 'x_Method',
     );
+    my %remap_fields;
+    foreach my $key (keys %map_fields) { $remap_fields{$map_fields{$key}} = $key; }
 
-    my ( $page, $status_code, %headers ) = $self->https_post( { } , $post_data);
+    my %content = $self->content();
+    if ($content{'expiration'} && $content{'expiration'} =~ /^(\d\d)\/(\d\d)/) {
+        $content{'expirationMM'} = $1;
+        $content{'expirationYY'} = '20'.$2;
+    }
+    $content{'version'} //= $self->api_version;
+
+    my $post_data;
+    if ($content{'action'} eq 'Normal Authorization') {
+        my $message = '';
+        foreach my $key ('x_email','cc_number','cc_exp_month','cc_cvv','cc_exp_year','x_cpf','x_country') { $message .= $content{$remap_fields{$key}}.'|'; } # $email.$number.$month.$cvv.$year.$cpf.$country;
+warn $message;
+        $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
+        # PHP
+        # $message = $email.$number.$month.$cvv.$year.$cpf.$country;
+        # strtoupper(hash_hmac('sha256', pack('A*', $message), pack('A*',$content{'password2'})));
+warn $content{'control'};
+        foreach my $key ('x_login','x_trans_key','x_version','x_invoice','x_amount','x_currency','x_description','x_device_id','x_country','x_cpf','x_name','x_email','cc_number','cc_exp_month','cc_exp_year','cc_cvv','cc_token','control') {
+            $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
+        }
+    }
+    chop($post_data);
+
+    my $url = 'https://'.$self->server.$self->path;
+    my $verify_ssl = 1;
+    my $response = HTTP::Tiny->new( verify_SSL=>$verify_ssl )->request('POST', $url, {
+        headers => {
+            'Content-Length' => length($post_data),
+            'Content-Type' => 'application/x-www-form-urlencoded',
+        },
+        content => $post_data,
+    } );
+    $self->server_response( $response->{'content'} );
+use Data::Dumper; warn Dumper $response;
+    {
+    };
 }
 
 =method server_request
