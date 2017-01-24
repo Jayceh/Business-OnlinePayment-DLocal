@@ -6,3 +6,4 @@ Makefile
 *.swo
 Business-OnlinePayment-DLocal-*
 .build
+README.pod
