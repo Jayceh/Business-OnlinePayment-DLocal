@@ -4,7 +4,7 @@ use 5.010;
 use strict;
 use warnings;
 
-use Test::More tests => 7;
+use Test::More tests => 2;
 use Module::Runtime qw( use_module );
 use Time::HiRes;
 
@@ -87,14 +87,13 @@ SKIP: { # Sale
     my $ret = $client->submit();
     subtest 'Normal Authorization' => sub {
         plan tests => 3;
-        ok($client->is_success, 'Transaction is_success');
+        ok(!$client->is_success, 'Transaction is_success was false, as expected');
         ok($client->order_number, 'Transaction order_number found');
         subtest 'A transaction error exist, as expected' => sub {
-            plan tests => 3;
-            isa_ok($ret->{'response'},'ARRAY');
-            return unless ref $ret->{'response'} eq 'ARRAY';
-            cmp_ok(scalar @{$ret->{'response'}}, '==', 1, 'Found the expected number of errors');
-            cmp_ok($ret->{'response'}->[0]->{'code'}, '==', '400', 'Found the expected error result');
+            plan tests => 2;
+            isa_ok($ret,'HASH');
+            return unless ref $ret eq 'HASH';
+            cmp_ok($ret->{'result'}, 'eq', '8', 'Found the expected error result');
         };
     } or diag explain $client->server_request,$client->server_response;
 }

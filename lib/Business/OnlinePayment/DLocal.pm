@@ -7,6 +7,7 @@ use Business::OnlinePayment::HTTPS;
 use Digest::SHA qw(hmac_sha256_hex);
 use HTTP::Tiny;
 use URI::Escape;
+use XML::Simple;
 use vars qw(@ISA $me $VERSION);
 use Log::Scrubber qw(disable $SCRUBBER scrubber :Carp scrubber_add_scrubber);
 @ISA     = qw(Business::OnlinePayment::HTTPS);
@@ -221,20 +222,23 @@ sub submit {
     if ($content{'action'} eq 'Normal Authorization') {
         my $message = '';
         foreach my $key (
-            'x_invoice','x_amount','x_currency',
-            'x_email','cc_number','cc_exp_month','cc_cvv','cc_exp_year','x_cpf','x_country'
+            'x_invoice','x_amount','x_currency','x_email','cc_number','cc_exp_month','cc_cvv','cc_exp_year','x_cpf','x_country'
         ) { $message .= $content{$remap_fields{$key}}; } # $email.$number.$month.$cvv.$year.$cpf.$country;
         $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
         # PHP
         # $message = $email.$number.$month.$cvv.$year.$cpf.$country;
         # strtoupper(hash_hmac('sha256', pack('A*', $message), pack('A*',$content{'password2'})));
-        foreach my $key ('x_login','x_trans_key','x_version','x_invoice','x_amount','x_currency','x_description','x_device_id','x_country','x_cpf','x_name','x_email','cc_number','cc_exp_month','cc_exp_year','cc_cvv','cc_token','control') {
+        foreach my $key (
+            'x_login','x_trans_key','x_version','x_invoice','x_amount','x_currency','x_description','x_device_id','x_country',
+            'x_cpf','x_name','x_email','cc_number','cc_exp_month','cc_exp_year','cc_cvv','cc_token','control'
+        ) {
             $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
         }
     }
     chop($post_data);
 
     my $url = 'https://'.$self->server.$self->path;
+    $self->server_request( $url.'?'.$post_data ); # yeah it's in GET, but it's easy to read that way
     my $verify_ssl = 1;
     my $response = HTTP::Tiny->new( verify_SSL=>$verify_ssl )->request('POST', $url, {
         headers => {
@@ -244,9 +248,26 @@ sub submit {
         content => $post_data,
     } );
     $self->server_response( $response->{'content'} );
-use Data::Dumper; warn Dumper $response;
-    {
-    };
+    my $res = $self->_parse_xml_response( $response->{'content'}, $response->{'status'} );
+    $self->is_success( $res->{'result'} eq '9' );
+    $self->order_number( $res->{'x_document'} );
+    $res;
+}
+
+sub _parse_xml_response {
+    my ( $self, $page, $status_code ) = @_;
+    my $response = {};
+    if ( $status_code =~ /^200/ ) {
+        if ( ! eval { $response = XMLin($page); } ) {
+            die "XML PARSING FAILURE: $@";
+        }
+    }
+    else {
+        $status_code =~ s/[\r\n\s]+$//; # remove newline so you can see the error in a linux console
+        if ( $status_code =~ /^(?:900|599)/ ) { $status_code .= ' - verify Litle has whitelisted your IP'; }
+        die "CONNECTION FAILURE: $status_code";
+    }
+    return $response;
 }
 
 =method server_request
