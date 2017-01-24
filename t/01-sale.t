@@ -4,7 +4,7 @@ use 5.010;
 use strict;
 use warnings;
 
-use Test::More tests => 5;
+use Test::More tests => 6;
 use Module::Runtime qw( use_module );
 use Time::HiRes;
 
@@ -67,17 +67,10 @@ my $data = {
      custom_test => 'BOP:DLocal unit test',
  }
 };
-my $trans;
-foreach my $n ( 1 .. 3, 3 ) { # we do "3" twice to test what an error message looks like
-    my %new_data = %$data;
-    $new_data{'subscription_number'} .= "-$n";
-    $new_data{'invoice_number'} .= "-$n";
-    $new_data{'amount'} .= $n;
-    push @$trans, \%new_data;
-}
 
 SKIP: { # Sale no token
     local $data->{'action'} = 'Normal Authorization';
+    local $data->{'invoice_number'} = $data->{'invoice_number'}.'-no-token';
     delete local $data->{'card_token'};
     $client->content(%$data);
     push @{$client->{'mocked'}}, {
@@ -96,7 +89,7 @@ SKIP: { # Sale no token
             return unless ref $ret eq 'HASH';
             cmp_ok($ret->{'result'}, 'eq', '8', 'Found the expected error result');
         };
-    } or diag explain $client->server_request,$client->server_response;
+    } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
 }
 
 SKIP: { # Save
@@ -112,7 +105,7 @@ SKIP: { # Save
         plan tests => 2;
         ok($client->is_success, 'Transaction is_success');
         ok($client->card_token, 'Transaction card_token found');
-    } or diag explain $client->server_request,$client->server_response;
+    } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
     $data->{'card_token'} = $client->card_token; # all tests below will use this
 }
 
@@ -136,8 +129,30 @@ SKIP: { # Sale with token
             return unless ref $ret eq 'HASH';
             cmp_ok($ret->{'result'}, 'eq', '9', 'Found the expected result');
         };
-    } or diag explain $client->server_request,$client->server_response;
+    } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
     $data->{'order_number'} = $client->order_number;
+}
+
+SKIP: { # Payment Status
+    local $data->{'action'} = 'PayStatus';
+    $client->content(%$data);
+    push @{$client->{'mocked'}}, {
+        action => 'billTransactions',
+        login => 'mocked',
+        resp => 'ok_duplicate',
+    } if $data->{'login'} eq 'mocked';
+    my $ret = eval { $client->submit() };
+    subtest 'PayStatus' => sub {
+        plan tests => 3;
+        ok($client->is_success, 'Transaction is_success');
+        ok($client->order_number, 'Transaction order_number found');
+        subtest 'A transaction result exists, as expected' => sub {
+            plan tests => 2;
+            isa_ok($ret,'HASH');
+            return unless ref $ret eq 'HASH';
+            cmp_ok($ret->{'result'}, 'eq', '1', 'Found the expected result');
+        };
+    } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
 }
 
 SKIP: { # Refund
@@ -160,5 +175,5 @@ SKIP: { # Refund
             return unless ref $ret eq 'HASH';
             cmp_ok($ret->{'result'}, 'eq', '1', 'Found the expected result');
         };
-    } or diag explain $client->server_request,$client->server_response;
+    } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
 }

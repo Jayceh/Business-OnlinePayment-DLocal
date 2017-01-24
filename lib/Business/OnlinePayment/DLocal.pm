@@ -235,7 +235,7 @@ sub submit {
         foreach my $key (
             'x_invoice','x_amount','x_currency','x_email','cc_number','cc_exp_month','cc_cvv','cc_exp_year','x_cpf','x_country','cc_token'
         ) { $message .= $content{$remap_fields{$key}}//''; } # $invoice.$amount.$currency.$email.$number.$month.$cvv.$year.$cpf.$country.$token;
-        $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
+        local $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
         # PHP
         # $message = $email.$number.$month.$cvv.$year.$cpf.$country;
         # strtoupper(hash_hmac('sha256', pack('A*', $message), pack('A*',$content{'password2'})));
@@ -254,7 +254,7 @@ sub submit {
         foreach my $key (
             'x_email','cc_number','cc_exp_month','cc_cvv','cc_exp_year','x_cpf','x_country'
         ) { $message .= $content{$remap_fields{$key}}; }
-        $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
+        local $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
         foreach my $key (
             'x_login','x_trans_key','x_version','x_country','x_cpf','x_name','x_email','cc_number','cc_exp_month',
             'cc_exp_year','cc_cvv','control','type'
@@ -270,9 +270,19 @@ sub submit {
         foreach my $key (
             'x_document','x_invoice','x_amount','x_currency'
         ) { $message .= $content{$remap_fields{$key}}; }
-        $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
+        local $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
         foreach my $key (
             'x_login','x_trans_key','x_version','x_invoice','x_document','x_amount','x_currency','control','type',
+        ) {
+            $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
+        }
+        $res = $self->_send_request($url,$post_data);
+        $self->is_success( defined $res->{'result'} && $res->{'result'} eq '1' ? 1 : 0 );
+        $self->order_number( $res->{'x_document'} );
+    } elsif (lc($content{'action'})eq 'paystatus') {
+        $url = 'https://'.$self->server.'/api_curl/query/paystatus';
+        foreach my $key (
+            'x_login','x_trans_key','x_version','x_invoice','x_document','type',
         ) {
             $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
         }
@@ -294,14 +304,15 @@ sub _send_request {
         headers => {
             'Content-Length' => length($post_data),
             'Content-Type' => 'application/x-www-form-urlencoded',
+            'Accept' => 'application/json',
         },
         content => $post_data,
     } );
     $self->server_response( $response->{'content'} );
+#use Data::Dumper; warn Dumper $response;
     my $res = substr($response->{'content'},0,1) eq '{'
         ? decode_json( $response->{'content'} )
         : $self->_parse_xml_response( $response->{'content'}, $response->{'status'} ); # just in case
-#use Data::Dumper; warn Dumper $res;
     $res;
 }
 
