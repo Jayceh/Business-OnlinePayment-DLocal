@@ -230,7 +230,8 @@ SKIP: { # Payment Status
             plan tests => 2;
             isa_ok($ret,'HASH');
             return unless ref $ret eq 'HASH';
-            cmp_ok($ret->{'result'}, 'eq', '1', 'Found the expected result');
+            # any result is technically legal, but this transaction should return a 9
+            cmp_ok($ret->{'result'}, 'eq', '9', 'Found the expected result');
         };
     } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
 }

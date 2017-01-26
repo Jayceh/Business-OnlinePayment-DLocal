@@ -309,8 +309,7 @@ sub submit {
             $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
         }
         $res = $self->_send_request($url,$post_data);
-        use Data::Dumper; warn Dumper $res;
-        $self->is_success( defined $res->{'result'} && $res->{'result'} eq '1' ? 1 : 0 );
+        $self->is_success( defined $res->{'result'} ); # any result is a positive think for a query call
         $self->order_number( $res->{'x_document'} );
     } else {
         die 'Invalid action';
