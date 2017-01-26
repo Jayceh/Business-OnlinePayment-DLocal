@@ -4,7 +4,7 @@ use 5.010;
 use strict;
 use warnings;
 
-use Test::More tests => 9;
+use Test::More tests => 8;
 use Module::Runtime qw( use_module );
 use Time::HiRes;
 
@@ -76,7 +76,7 @@ my $data = {
 
 SKIP: { # Auth/capture no token
     subtest 'Authorization Only, with full card' => sub {
-        plan tests => 3;
+        plan tests => 4;
         local $data->{'action'} = 'Authorization Only';
         local $data->{'invoice_number'} = $data->{'invoice_number'}.'-auth-no-token';
         delete local $data->{'card_token'};
@@ -87,19 +87,18 @@ SKIP: { # Auth/capture no token
             resp => 'ok_duplicate',
         } if $data->{'login'} eq 'mocked';
         my $ret = $client->submit();
-        skip 'API not enabled', 3 if $ret->{'error_code'}//'' eq '403';
+        skip 'Auth/Capture API is not enabled', 4 if $ret->{'error_code'}//'' eq '403';
         ok($client->is_success, 'Transaction is_success');
         ok($client->order_number, 'Transaction order_number found');
-        subtest 'A transaction error exists, as expected' => sub {
+        subtest 'A transaction result exists, as expected' => sub {
             plan tests => 2;
             isa_ok($ret,'HASH');
             return unless ref $ret eq 'HASH';
             cmp_ok($ret->{'result'}, 'eq', '11', 'Found the expected result');
         };
-    } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
 
-    SKIP: {
-        skip 'TODO', 1;
+        skip 'Cannot capture without an auth', 1 unless $client->is_success && $client->order_number;
+        $data->{'order_number'} = $client->order_number;
         subtest 'Capture' => sub {
             plan tests => 3;
             local $data->{'action'} = 'post authorization';
@@ -118,11 +117,10 @@ SKIP: { # Auth/capture no token
                 plan tests => 2;
                 isa_ok($ret,'HASH');
                 return unless ref $ret eq 'HASH';
-                cmp_ok($ret->{'result'}, 'eq', '11', 'Found the expected result');
+                cmp_ok($ret->{'result'}, 'eq', '9', 'Found the expected result');
             };
         } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
-
-    }
+    } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
 }
 
 SKIP: { # Sale no token (should decline)

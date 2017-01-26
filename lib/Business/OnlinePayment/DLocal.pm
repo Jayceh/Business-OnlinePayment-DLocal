@@ -209,6 +209,8 @@ sub submit {
         'x_phone'         => 'phone',
         'x_merchant_id'   => 'merch_id',       # sub-merchant id, lmk if you ever use this, no normal BOP standard here
 
+        'x_auth_id'      => 'order_number',
+
         control         => 'control',
         type            => 'type',
     );
@@ -255,7 +257,7 @@ sub submit {
         $url = 'https://'.$self->server.'/api_curl/cc/capture';
         my $message = '';
         foreach my $key (
-            'x_email','cc_number','cc_exp_month','cc_cvv','cc_exp_year','x_cpf','x_country'
+            'x_invoice','x_auth_id','x_amount','x_currency',
         ) { $message .= $content{$remap_fields{$key}}; }
         local $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
         foreach my $key (
@@ -264,8 +266,8 @@ sub submit {
             $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
         }
         $res = $self->_send_request($url,$post_data);
-        $self->is_success( $res->{'cc_token'} ? 1 : 0 );
-        $self->card_token( $res->{'cc_token'} );
+        $self->is_success( defined $res->{'result'} && $res->{'result'} =~ /^9|11$/ ? 1 : 0 );
+        $self->order_number( $res->{'x_document'} // $res->{'x_auth_id'} ); # sale vs auth
     } elsif (lc($content{'action'})eq 'tokenize') {
         $url = 'https://'.$self->server.'/api_curl/cc/save';
         my $message = '';
