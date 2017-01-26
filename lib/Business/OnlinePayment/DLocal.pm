@@ -29,7 +29,7 @@ sub _info {
         supported_types   => ['CC'],
         supported_actions => {
             CC => [
-                'Tokenzie',
+                'Tokenize',
                 'Normal Authorization',
                 'Post Authorization',
                 'Authorization Only',
@@ -171,49 +171,48 @@ sub build_control {
 
 sub submit {
     my $self = shift;
+    my %content = $self->content();
 
-    my %map_fields = (
-        login           => 'x_login',
-        password        => 'x_trans_key',
-        password2       => 'x_secret_key',
-        version         => 'x_version',
-        country         => 'x_country',
-        invoice_number  => 'x_invoice',
-        order_number    => 'x_document',
-        amount          => 'x_amount',
-        currency        => 'x_currency',
-        description     => 'x_description',
-        device_id       => 'x_device_id',
-        cpf             => 'x_cpf',           # govt id number
-        name            => 'x_name',          # needs a joiner of this in map fields
-        email           => 'x_email',
-        card_number     => 'cc_number',
-        expirationMM    => 'cc_exp_month',    # needs to be broken in two
-        expirationYY    => 'cc_exp_year',
-        cvv2            => 'cc_cvv',
-        card_token      => 'cc_token',
-        bank            => 'x_bank',          # looks to be card, but others... different key
-        issuer          => 'cc_issuer',       # same
-        installments    => 'cc_installments', # similar breakout one-shot vs a number
-        descriptor      => 'cc_descriptor',
-        customer_ip     => 'x_ip',
-        confirm         => 'x_confirm',       # a confirmation URL if passed, similar to paypal IPN
-        birthdate       => 'x_bdate',         # WTF is this needed
-        customer_id     => 'x_iduser',
-        address         => 'x_address',
-        zip             => 'x_zip',
-        city            => 'x_city',
-        state           => 'x_state',
-        phone           => 'x_phone',
-        merch_id        => 'x_merchant_id',   # sub-merchant id, lmk if you ever use this, no normal BOP standard here
+    my %remap_fields      = (
+        # DLOCAL #        => # BOP #
+        'x_login'         => 'login',           # reports_login
+        'x_trans_key'     => 'password',        # reports_key
+        'x_secret_key'    => 'password2',
+        'x_version'       => 'version',
+        'x_country'       => 'country',
+        'x_invoice'       => 'invoice_number',
+        'x_document'      => 'order_number',
+        'x_amount'        => 'amount',
+        'x_currency'      => 'currency',
+        'x_description'   => 'description',
+        'x_device_id'     => 'device_id',
+        'x_cpf'           => 'cpf',             # govt id number
+        'x_name'          => 'name',            # needs a joiner of this in map fields
+        'x_email'         => 'email',
+        'cc_number'       => 'card_number',
+        'cc_exp_month'    => 'expirationMM',    # needs to be broken in two
+        'cc_exp_year'     => 'expirationYY',
+        'cc_cvv'          => 'cvv2',
+        'cc_token'        => 'card_token',
+        'x_bank'          => 'bank',            # looks to be card, but others... different key
+        'cc_issuer'       => 'issuer',          # same
+        'cc_installments' => 'installments',    # similar breakout one-shot vs a number
+        'cc_descriptor'   => 'descriptor',
+        'x_ip'            => 'customer_ip',
+        'x_confirm'       => 'confirm',         # a confirmation URL if passed, similar to paypal IPN
+        'x_bdate'         => 'birthdate',       # WTF is this needed
+        'x_iduser'        => 'customer_id',
+        'x_address'       => 'address',
+        'x_zip'           => 'zip',
+        'x_city'          => 'city',
+        'x_state'         => 'state',
+        'x_phone'         => 'phone',
+        'x_merchant_id'   => 'merch_id',       # sub-merchant id, lmk if you ever use this, no normal BOP standard here
+
         control         => 'control',
-
         type            => 'type',
     );
-    my %remap_fields;
-    foreach my $key (keys %map_fields) { $remap_fields{$map_fields{$key}} = $key; }
 
-    my %content = $self->content();
     if ($content{'expiration'} && $content{'expiration'} =~ /^(\d\d)\/(\d\d)/) {
         $content{'expirationMM'} = $1;
         $content{'expirationYY'} = '20'.$2;
@@ -225,8 +224,12 @@ sub submit {
     my $post_data;
     my $url;
     my $res;
-    if (lc($content{'action'})eq 'normal authorization') {
-        $url = 'https://'.$self->server.'/api_curl/cc/sale';
+    if (
+        (lc($content{'action'})eq 'normal authorization')
+            ||
+        (lc($content{'action'})eq 'authorization only')
+    ) {
+        $url = 'https://'.$self->server.'/api_curl/cc/'.(lc($content{'action'})eq 'normal authorization' ? 'sale' : 'auth');
         foreach ('x_country','x_cpf','x_name','x_email','cc_number','cc_exp_month','cc_exp_year','cc_cvv') {
             # tokens fail if you try and send these as well
             delete $content{$remap_fields{$_}} if $content{'card_token'};
@@ -246,8 +249,23 @@ sub submit {
             $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
         }
         $res = $self->_send_request($url,$post_data);
-        $self->is_success( defined $res->{'result'} && $res->{'result'} eq '9' ? 1 : 0 );
-        $self->order_number( $res->{'x_document'} );
+        $self->is_success( defined $res->{'result'} && $res->{'result'} =~ /^9|11$/ ? 1 : 0 );
+        $self->order_number( $res->{'x_document'} // $res->{'x_auth_id'} ); # sale vs auth
+    } elsif (lc($content{'action'})eq 'post authorization') {
+        $url = 'https://'.$self->server.'/api_curl/cc/capture';
+        my $message = '';
+        foreach my $key (
+            'x_email','cc_number','cc_exp_month','cc_cvv','cc_exp_year','x_cpf','x_country'
+        ) { $message .= $content{$remap_fields{$key}}; }
+        local $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
+        foreach my $key (
+            'x_login','x_trans_key','x_version','x_invoice','x_amount','x_currency','x_auth_id','control','type',
+        ) {
+            $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
+        }
+        $res = $self->_send_request($url,$post_data);
+        $self->is_success( $res->{'cc_token'} ? 1 : 0 );
+        $self->card_token( $res->{'cc_token'} );
     } elsif (lc($content{'action'})eq 'tokenize') {
         $url = 'https://'.$self->server.'/api_curl/cc/save';
         my $message = '';
@@ -280,15 +298,16 @@ sub submit {
         $self->is_success( defined $res->{'result'} && $res->{'result'} eq '1' ? 1 : 0 );
         $self->order_number( $res->{'x_document'} );
     } elsif (lc($content{'action'})eq 'paystatus') {
+        local $remap_fields{'x_login'} = 'reports_login';
+        local $remap_fields{'x_trans_key'} = 'reports_key';
         $url = 'https://'.$self->server.'/api_curl/query/paystatus';
         foreach my $key (
-            'x_version','x_invoice','x_document','type',
+            'x_login','x_trans_key','x_version','x_invoice','x_document','type',
         ) {
             $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
         }
-	$post_data .= uri_escape('x_login') . '=' . uri_escape($content{'reports_login'}) . '&';
-	$post_data .= uri_escape('x_trans_key') . '=' . uri_escape($content{'reports_key'}) . '&';
         $res = $self->_send_request($url,$post_data);
+        use Data::Dumper; warn Dumper $res;
         $self->is_success( defined $res->{'result'} && $res->{'result'} eq '1' ? 1 : 0 );
         $self->order_number( $res->{'x_document'} );
     } else {

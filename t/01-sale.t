@@ -4,7 +4,7 @@ use 5.010;
 use strict;
 use warnings;
 
-use Test::More tests => 7;
+use Test::More tests => 9;
 use Module::Runtime qw( use_module );
 use Time::HiRes;
 
@@ -25,7 +25,7 @@ if ($username eq 'mocked') {
     diag 'export PERL_BUSINESS_DLOCAL_PASSWORD=your_test_password';
     diag 'export PERL_BUSINESS_DLOCAL_SECRET=your_test_secret';
     diag 'export PERL_BUSINESS_DLOCAL_REPORTS_USERNAME=your_reports_user';
-    diag 'export PERL_BUSINESS_DLOCAL_REPORS_KEY=your_reports_key';
+    diag 'export PERL_BUSINESS_DLOCAL_REPORTS_KEY=your_reports_key';
     diag '';
     diag '';
 }
@@ -44,7 +44,7 @@ my $data = {
  password       => $password,
  password2      => $secret,
  reports_login  => $reports_username,
- reports_login  => $reports_key,
+ reports_key    => $reports_key,
  ##### action         => 'fetchByMerchantTransactionId',
  description    => 'Business::OnlinePayment visa test',
 
@@ -74,7 +74,58 @@ my $data = {
  }
 };
 
-SKIP: { # Sale no token
+SKIP: { # Auth/capture no token
+    subtest 'Authorization Only, with full card' => sub {
+        plan tests => 3;
+        local $data->{'action'} = 'Authorization Only';
+        local $data->{'invoice_number'} = $data->{'invoice_number'}.'-auth-no-token';
+        delete local $data->{'card_token'};
+        $client->content(%$data);
+        push @{$client->{'mocked'}}, {
+            action => 'billTransactions',
+            login => 'mocked',
+            resp => 'ok_duplicate',
+        } if $data->{'login'} eq 'mocked';
+        my $ret = $client->submit();
+        skip 'API not enabled', 3 if $ret->{'error_code'}//'' eq '403';
+        ok($client->is_success, 'Transaction is_success');
+        ok($client->order_number, 'Transaction order_number found');
+        subtest 'A transaction error exists, as expected' => sub {
+            plan tests => 2;
+            isa_ok($ret,'HASH');
+            return unless ref $ret eq 'HASH';
+            cmp_ok($ret->{'result'}, 'eq', '11', 'Found the expected result');
+        };
+    } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
+
+    SKIP: {
+        skip 'TODO', 1;
+        subtest 'Capture' => sub {
+            plan tests => 3;
+            local $data->{'action'} = 'post authorization';
+            local $data->{'order_number'} = $client->order_number();
+            delete local $data->{'card_token'};
+            $client->content(%$data);
+            push @{$client->{'mocked'}}, {
+                action => 'billTransactions',
+                login => 'mocked',
+                resp => 'ok_duplicate',
+            } if $data->{'login'} eq 'mocked';
+            my $ret = $client->submit();
+            ok($client->is_success, 'Transaction is_success');
+            ok($client->order_number, 'Transaction order_number found');
+            subtest 'A transaction error exists, as expected' => sub {
+                plan tests => 2;
+                isa_ok($ret,'HASH');
+                return unless ref $ret eq 'HASH';
+                cmp_ok($ret->{'result'}, 'eq', '11', 'Found the expected result');
+            };
+        } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
+
+    }
+}
+
+SKIP: { # Sale no token (should decline)
     local $data->{'action'} = 'Normal Authorization';
     local $data->{'invoice_number'} = $data->{'invoice_number'}.'-no-token';
     delete local $data->{'card_token'};
@@ -139,7 +190,7 @@ SKIP: { # Sale with token
     $data->{'order_number'} = $client->order_number;
 }
 
-SKIP: { # Rejected Sale with token
+SKIP: { # Sale with token
     skip 'No card_token was found', 1 unless $data->{'card_token'};
     local $data->{'action'} = 'Normal Authorization';
     local $data->{'first_name'} = 'REJE';
@@ -150,7 +201,7 @@ SKIP: { # Rejected Sale with token
         resp => 'ok_duplicate',
     } if $data->{'login'} eq 'mocked';
     my $ret = $client->submit();
-    subtest 'Rejected Normal Authorization with card_token' => sub {
+    subtest 'Normal Authorization with card_token' => sub {
         plan tests => 3;
         ok($client->is_success, 'Transaction is_success');
         ok($client->order_number, 'Transaction order_number found');
@@ -158,7 +209,7 @@ SKIP: { # Rejected Sale with token
             plan tests => 2;
             isa_ok($ret,'HASH');
             return unless ref $ret eq 'HASH';
-            cmp_ok($ret->{'result'}, 'eq', '8', 'Found the expected result');
+            cmp_ok($ret->{'result'}, 'eq', '9', 'Found the expected result') or diag explain $ret;
         };
     } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
     $data->{'order_number'} = $client->order_number;
