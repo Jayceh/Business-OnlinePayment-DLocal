@@ -4,13 +4,15 @@ use 5.010;
 use strict;
 use warnings;
 
-use Test::More tests => 6;
+use Test::More tests => 7;
 use Module::Runtime qw( use_module );
 use Time::HiRes;
 
 my $username = $ENV{PERL_BUSINESS_DLOCAL_USERNAME} || 'mocked';
 my $password = $ENV{PERL_BUSINESS_DLOCAL_PASSWORD} || 'mocked';
 my $secret   = $ENV{PERL_BUSINESS_DLOCAL_SECRET}   || 'mocked';
+my $reports_username   = $ENV{PERL_BUSINESS_DLOCAL_REPORTS_USERNAME}   || 'mocked';
+my $reports_key   = $ENV{PERL_BUSINESS_DLOCAL_REPORTS_KEY}   || 'mocked';
 
 if ($username eq 'mocked') {
     diag '';
@@ -21,7 +23,9 @@ if ($username eq 'mocked') {
     diag '';
     diag 'export PERL_BUSINESS_DLOCAL_USERNAME=your_test_user';
     diag 'export PERL_BUSINESS_DLOCAL_PASSWORD=your_test_password';
-    diag 'export PERL_BUSINESS_DLOCAL_PASSWORD=your_test_secret';
+    diag 'export PERL_BUSINESS_DLOCAL_SECRET=your_test_secret';
+    diag 'export PERL_BUSINESS_DLOCAL_REPORTS_USERNAME=your_reports_user';
+    diag 'export PERL_BUSINESS_DLOCAL_REPORS_KEY=your_reports_key';
     diag '';
     diag '';
 }
@@ -39,12 +43,14 @@ my $data = {
  login          => $username,
  password       => $password,
  password2      => $secret,
+ reports_login  => $reports_username,
+ reports_login  => $reports_key,
  ##### action         => 'fetchByMerchantTransactionId',
  description    => 'Business::OnlinePayment visa test',
 
  division_number     => '1',
  type                => 'CC',
- amount              => '9000',
+ amount              => '90.00',
  customer_number     => '123',
  subscription_number => 'TEST-'.Time::HiRes::time(),
  invoice_number      => 'TEST-'.Time::HiRes::time(),
@@ -58,11 +64,11 @@ my $data = {
  zip                 => '84058',
  country             => 'BR',
  currency            => 'USD',
- email               => 'tofu@beast.org',
- card_number         => '4111111111111111',
- cvv2                => '123',
- cpf => '123456789',
- expiration          => '12/25',
+ email               => 'bop@example.com',
+ card_number         => '4556993263529121',
+ cvv2                => '554',
+ cpf => '00003456789',
+ expiration          => '06/19',
  vindicia_nvp        => {
      custom_test => 'BOP:DLocal unit test',
  }
@@ -128,6 +134,31 @@ SKIP: { # Sale with token
             isa_ok($ret,'HASH');
             return unless ref $ret eq 'HASH';
             cmp_ok($ret->{'result'}, 'eq', '9', 'Found the expected result');
+        };
+    } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
+    $data->{'order_number'} = $client->order_number;
+}
+
+SKIP: { # Rejected Sale with token
+    skip 'No card_token was found', 1 unless $data->{'card_token'};
+    local $data->{'action'} = 'Normal Authorization';
+    local $data->{'first_name'} = 'REJE';
+    $client->content(%$data);
+    push @{$client->{'mocked'}}, {
+        action => 'billTransactions',
+        login => 'mocked',
+        resp => 'ok_duplicate',
+    } if $data->{'login'} eq 'mocked';
+    my $ret = $client->submit();
+    subtest 'Rejected Normal Authorization with card_token' => sub {
+        plan tests => 3;
+        ok($client->is_success, 'Transaction is_success');
+        ok($client->order_number, 'Transaction order_number found');
+        subtest 'A transaction result exists, as expected' => sub {
+            plan tests => 2;
+            isa_ok($ret,'HASH');
+            return unless ref $ret eq 'HASH';
+            cmp_ok($ret->{'result'}, 'eq', '8', 'Found the expected result');
         };
     } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
     $data->{'order_number'} = $client->order_number;

@@ -282,10 +282,12 @@ sub submit {
     } elsif (lc($content{'action'})eq 'paystatus') {
         $url = 'https://'.$self->server.'/api_curl/query/paystatus';
         foreach my $key (
-            'x_login','x_trans_key','x_version','x_invoice','x_document','type',
+            'x_version','x_invoice','x_document','type',
         ) {
             $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
         }
+	$post_data .= uri_escape('x_login') . '=' . uri_escape($content{'reports_login'}) . '&';
+	$post_data .= uri_escape('x_trans_key') . '=' . uri_escape($content{'reports_key'}) . '&';
         $res = $self->_send_request($url,$post_data);
         $self->is_success( defined $res->{'result'} && $res->{'result'} eq '1' ? 1 : 0 );
         $self->order_number( $res->{'x_document'} );
