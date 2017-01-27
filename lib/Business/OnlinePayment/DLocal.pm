@@ -60,6 +60,7 @@ sub test_transaction {
     my $self = shift;
     my $testMode = shift;
     if (! defined $testMode) { $testMode = $self->{'test_transaction'} || 0; }
+    $self->{'test_transaction'} = $testMode;
     if($testMode) {
         $self->server('sandbox.astropaycard.com');
         $self->port('443');
@@ -182,6 +183,7 @@ sub field_map {
         'x_country'       => 'country',
         'x_invoice'       => 'invoice_number',
         'x_document'      => 'order_number',
+        'x_refund'        => 'order_number',
         'x_amount'        => 'amount',
         'x_currency'      => 'currency',
         'x_description'   => 'description',
