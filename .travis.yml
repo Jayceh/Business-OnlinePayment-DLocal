@@ -1,7 +1,6 @@
 sudo: false
 language: perl
 perl:
-  - "5.8"               # normal preinstalled perl
   - "5.10"
   - "5.12"
   - "5.14"
@@ -10,13 +9,8 @@ perl:
   - "5.20"              # installs latest perl 5.20 (if not already available)
   - "5.22"             # installs latest perl 5.22.1 (if not already available)
   - "5.24"             # installs latest perl 5.22.1 (if not already available)
-  - "blead"             # builds perl from git
 matrix:
   allow_failures:
-    - perl: blead       # ignore failures for blead perl
-    - perl: '5.8'
-    - perl: '5.8.4'
-    - perl: '5.8.4-thr'
   fast_finish: true
 before_install:
    - git config --global user.name "TravisCI"
