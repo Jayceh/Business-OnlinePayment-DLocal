@@ -404,14 +404,23 @@ sub _send_request {
     my $url = $config->{'url'};
     $self->server_request( $url.'?'.$post_data ); # yeah it's in GET, but it's easy to read that way
     my $verify_ssl = 1;
-    my $response = HTTP::Tiny->new( verify_SSL=>$verify_ssl )->request('POST', $url, {
-        headers => {
-            'Content-Length' => length($post_data),
-            'Content-Type' => 'application/x-www-form-urlencoded',
-            'Accept' => 'application/json',
-        },
-        content => $post_data,
-    } );
+
+    my $response;
+    if (ref $self->{'mocked'} eq 'ARRAY' && scalar @{$self->{'mocked'}}) {
+        my $mock = shift @{$self->{'mocked'}};
+        die "Unexpected mock action" unless lc($mock->{'action'}) eq lc($content->{'action'});
+        die "Unexpected mock login" unless $mock->{'login'} eq $content{'login'};
+        $response->{'content'} = $mock->{'resp'};
+    } else {
+        $response = HTTP::Tiny->new( verify_SSL=>$verify_ssl )->request('POST', $url, {
+            headers => {
+                'Content-Length' => length($post_data),
+                'Content-Type' => 'application/x-www-form-urlencoded',
+                'Accept' => 'application/json',
+            },
+            content => $post_data,
+        } );
+    }
     $self->server_response( $response->{'content'} );
     my $c = substr($response->{'content'},0,1);
     my $res = $c eq '{' ? decode_json( $response->{'content'} )
