@@ -35,6 +35,7 @@ sub _info {
                 'Authorization Only',
                 'Credit',
                 'Auth Reversal',
+                'PayStatus',
             ],
         },
     };
@@ -169,11 +170,8 @@ sub build_control {
     'TODO not built yet';
 }
 
-sub submit {
-    my $self = shift;
-    my %content = $self->content();
-
-    my %remap_fields      = (
+sub field_map {
+    return (
         # DLOCAL #        => # BOP #
         'x_login'         => 'login',           # reports_login
         'x_trans_key'     => 'password',        # reports_key
@@ -214,112 +212,151 @@ sub submit {
         control         => 'control',
         type            => 'type',
     );
+}
 
+sub content {
+    my $self = shift;
+    my %content = $self->SUPER::content(@_);
+
+    # Adjust common %content BOP format to what DLOCAL needs
     if ($content{'expiration'} && $content{'expiration'} =~ /^(\d\d)\/(\d\d)/) {
-        $content{'expirationMM'} = $1;
-        $content{'expirationYY'} = '20'.$2;
+        $content{'expirationMM'} //= $1;
+        $content{'expirationYY'} //= '20'.$2;
     }
-    $content{'name'} = ($content{'fname'}//'').' '.($content{'lname'}//'');
+    if (! exists $content{'name'}) {
+        $content{'name'} = $content{'first_name'}//'';
+        $content{'name'} .= ' ' if length($content{'name'});
+        $content{'name'} .= $content{'last_name'} if length($content{'last_name'}//'');
+    }
     $content{'version'} //= $self->api_version;
     $content{'type'} = 'json';
 
-    my $post_data;
-    my $url;
-    my $res;
-    if (
-        (lc($content{'action'})eq 'normal authorization')
-            ||
-        (lc($content{'action'})eq 'authorization only')
-    ) {
-        $url = 'https://'.$self->server.'/api_curl/cc/'.(lc($content{'action'})eq 'normal authorization' ? 'sale' : 'auth');
-        foreach ('x_country','x_cpf','x_name','x_email','cc_number','cc_exp_month','cc_exp_year','cc_cvv') {
-            # tokens fail if you try and send these as well
-            delete $content{$remap_fields{$_}} if $content{'card_token'};
+    return %content;
+}
+
+sub submit {
+    my $self = shift;
+    my %content = $self->content();
+    die 'Missing action' unless $content{'action'};
+
+    my $action;
+    foreach (@{$self->_info()->{'supported_actions'}->{'CC'}}) {
+        if (lc($_) eq lc($content{'action'})) {
+            $action = lc('_'.$_);
+            $action =~ s/ /\_/g;
         }
-        my $message = '';
-        foreach my $key (
-            'x_invoice','x_amount','x_currency','x_email','cc_number','cc_exp_month','cc_cvv','cc_exp_year','x_cpf','x_country','cc_token'
-        ) { $message .= $content{$remap_fields{$key}}//''; } # $invoice.$amount.$currency.$email.$number.$month.$cvv.$year.$cpf.$country.$token;
-        local $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
-        # PHP
-        # $message = $email.$number.$month.$cvv.$year.$cpf.$country;
-        # strtoupper(hash_hmac('sha256', pack('A*', $message), pack('A*',$content{'password2'})));
-        foreach my $key (
-            'x_login','x_trans_key','x_version','x_invoice','x_amount','x_currency','x_description','x_device_id','x_country',
-            'x_cpf','x_name','x_email','cc_number','cc_exp_month','cc_exp_year','cc_cvv','cc_token','control','type'
-        ) {
-            $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
-        }
-        $res = $self->_send_request($url,$post_data);
-        $self->is_success( defined $res->{'result'} && $res->{'result'} =~ /^9|11$/ ? 1 : 0 );
-        $self->order_number( $res->{'x_document'} // $res->{'x_auth_id'} ); # sale vs auth
-    } elsif (lc($content{'action'})eq 'post authorization') {
-        $url = 'https://'.$self->server.'/api_curl/cc/capture';
-        my $message = '';
-        foreach my $key (
-            'x_invoice','x_auth_id','x_amount','x_currency',
-        ) { $message .= $content{$remap_fields{$key}}; }
-        local $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
-        foreach my $key (
-            'x_login','x_trans_key','x_version','x_invoice','x_amount','x_currency','x_auth_id','control','type',
-        ) {
-            $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
-        }
-        $res = $self->_send_request($url,$post_data);
-        $self->is_success( defined $res->{'result'} && $res->{'result'} =~ /^9|11$/ ? 1 : 0 );
-        $self->order_number( $res->{'x_document'} // $res->{'x_auth_id'} ); # sale vs auth
-    } elsif (lc($content{'action'})eq 'tokenize') {
-        $url = 'https://'.$self->server.'/api_curl/cc/save';
-        my $message = '';
-        foreach my $key (
-            'x_email','cc_number','cc_exp_month','cc_cvv','cc_exp_year','x_cpf','x_country'
-        ) { $message .= $content{$remap_fields{$key}}; }
-        local $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
-        foreach my $key (
-            'x_login','x_trans_key','x_version','x_country','x_cpf','x_name','x_email','cc_number','cc_exp_month',
-            'cc_exp_year','cc_cvv','control','type'
-        ) {
-            $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
-        }
-        $res = $self->_send_request($url,$post_data);
-        $self->is_success( $res->{'cc_token'} ? 1 : 0 );
-        $self->card_token( $res->{'cc_token'} );
-    } elsif (lc($content{'action'})eq 'credit') {
-        $url = 'https://'.$self->server.'/api_curl/cc/refund';
-        my $message = '';
-        foreach my $key (
-            'x_document','x_invoice','x_amount','x_currency'
-        ) { $message .= $content{$remap_fields{$key}}; }
-        local $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
-        foreach my $key (
-            'x_login','x_trans_key','x_version','x_invoice','x_document','x_amount','x_currency','control','type',
-        ) {
-            $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
-        }
-        $res = $self->_send_request($url,$post_data);
-        $self->is_success( defined $res->{'result'} && $res->{'result'} eq '1' ? 1 : 0 );
-        $self->order_number( $res->{'x_document'} );
-    } elsif (lc($content{'action'})eq 'paystatus') {
-        local $remap_fields{'x_login'} = 'reports_login';
-        local $remap_fields{'x_trans_key'} = 'reports_key';
-        $url = 'https://'.$self->server.'/api_curl/query/paystatus';
-        foreach my $key (
-            'x_login','x_trans_key','x_version','x_invoice','x_document','type',
-        ) {
-            $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
-        }
-        $res = $self->_send_request($url,$post_data);
-        $self->is_success( defined $res->{'result'} ); # any result is a positive think for a query call
-        $self->order_number( $res->{'x_document'} );
+    }
+    if ($action && $self->can($action)) {
+        return $self->$action(\%content);
     } else {
-        die 'Invalid action';
+        die 'Unsupported action';
+    }
+}
+
+sub _normal_authorization { shift->_authorization_only(@_); }
+
+sub _authorization_only {
+    my ($self,$content) = @_;
+
+    if ($content->{'card_token'}) {
+        # tokens fail if you try and send these as well
+        my %remap_fields = $self->field_map();
+        foreach ('x_country','x_cpf','x_name','x_email','cc_number','cc_exp_month','cc_exp_year','cc_cvv') {
+            delete $content->{$remap_fields{$_}};
+        }
     }
 
+    my $config = {
+        url => 'https://'.$self->server.'/api_curl/cc/'.(lc($content->{'action'})eq 'normal authorization' ? 'sale' : 'auth'),
+        control => ['x_invoice','x_amount','x_currency','x_email','cc_number','cc_exp_month','cc_cvv','cc_exp_year','x_cpf','x_country','cc_token'],
+        post_data => ['x_login','x_trans_key','x_version','x_invoice','x_amount','x_currency','x_description','x_device_id','x_country',
+                    'x_cpf','x_name','x_email','cc_number','cc_exp_month','cc_exp_year','cc_cvv','cc_token','control','type'],
+    };
+
+    my $res = $self->_send_request($config,$content);
+    $self->is_success( defined $res->{'result'} && $res->{'result'} =~ /^9|11$/ ? 1 : 0 );
+    $self->order_number( $res->{'x_document'} // $res->{'x_auth_id'} ); # sale vs auth
+    $res;
+}
+
+sub _post_authorization{
+    my ($self,$content) = @_;
+
+    my $config = {
+        url => 'https://'.$self->server.'/api_curl/cc/capture',
+        control => ['x_invoice','x_auth_id','x_amount','x_currency'],
+        post_data => ['x_login','x_trans_key','x_version','x_invoice','x_amount','x_currency','x_auth_id','control','type'],
+    };
+
+    my $res = $self->_send_request($config,$content);
+    $self->is_success( defined $res->{'result'} && $res->{'result'} =~ /^9|11$/ ? 1 : 0 );
+    $self->order_number( $res->{'x_document'} // $res->{'x_auth_id'} ); # sale vs auth
+    $res;
+}
+
+sub _tokenize {
+    my ($self,$content) = @_;
+
+    my $config = {
+        url => 'https://'.$self->server.'/api_curl/cc/save',
+        control => ['x_email','cc_number','cc_exp_month','cc_cvv','cc_exp_year','x_cpf','x_country'],
+        post_data => ['x_login','x_trans_key','x_version','x_country','x_cpf','x_name','x_email','cc_number','cc_exp_month','cc_exp_year','cc_cvv','control','type'],
+    };
+
+    my $res = $self->_send_request($config,$content);
+    $self->is_success( $res->{'cc_token'} ? 1 : 0 );
+    $self->card_token( $res->{'cc_token'} );
+    $res;
+}
+
+sub _credit {
+    my ($self,$content) = @_;
+
+    my $config = {
+        url => 'https://'.$self->server.'/api_curl/cc/refund',
+        control => ['x_document','x_invoice','x_amount','x_currency'],
+        post_data => ['x_login','x_trans_key','x_version','x_invoice','x_document','x_amount','x_currency','control','type'],
+    };
+
+    my $res = $self->_send_request($config,$content);
+    $self->is_success( defined $res->{'result'} && $res->{'result'} eq '1' ? 1 : 0 );
+    $self->order_number( $res->{'x_document'} );
+    $res;
+}
+
+sub _paystatus {
+    my ($self,$content) = @_;
+
+    my $config = {
+        url => 'https://'.$self->server.'/api_curl/query/paystatus',
+        control => [], # not used
+        post_data => ['x_login','x_trans_key','x_version','x_invoice','x_document','type'],
+    };
+
+    # query api uses different credentials
+    local $content->{'login'} = $content->{'reports_login'};
+    local $content->{'password'} = $content->{'reports_key'};
+
+    my $res = $self->_send_request($config,$content);
+    $self->is_success( defined $res->{'result'} ); # any result is a positive think for a query call
+    $self->order_number( $res->{'x_document'} );
     $res;
 }
 
 sub _send_request {
-    my ($self,$url,$post_data) = @_;
+    my ($self,$config,$content) = @_;
+    my %content = %$content;
+    my %remap_fields = $self->field_map();
+
+    my $message = '';
+    foreach my $key ( @{$config->{'control'}} ) { $message .= $content{$remap_fields{$key}}//''; }
+    local $content{'control'} = uc(hmac_sha256_hex(pack('A*',$message), pack('A*',$content{'password2'})));
+
+    my $post_data;
+    foreach my $key ( @{$config->{'post_data'}} ) {
+        $post_data .= uri_escape($key).'='.uri_escape($content{$remap_fields{$key}}).'&' if $content{$remap_fields{$key}};
+    }
+    my $url = $config->{'url'};
     $self->server_request( $url.'?'.$post_data ); # yeah it's in GET, but it's easy to read that way
     my $verify_ssl = 1;
     my $response = HTTP::Tiny->new( verify_SSL=>$verify_ssl )->request('POST', $url, {
@@ -331,7 +368,6 @@ sub _send_request {
         content => $post_data,
     } );
     $self->server_response( $response->{'content'} );
-#use Data::Dumper; warn Dumper $response;
     my $res = substr($response->{'content'},0,1) eq '{'
         ? decode_json( $response->{'content'} )
         : $self->_parse_xml_response( $response->{'content'}, $response->{'status'} ); # just in case
