@@ -36,6 +36,8 @@ sub _info {
                 'Credit',
                 'Auth Reversal',
                 'PayStatus',
+                'RefundStatus',
+                'CurrencyExchange',
             ],
         },
     };
@@ -343,6 +345,49 @@ sub _paystatus {
     $res;
 }
 
+sub _refundstatus {
+    my ($self,$content) = @_;
+
+    my $config = {
+        url => 'https://'.$self->server.'/api_curl/query/refundstatus',
+        control => [], # not used
+        post_data => ['x_login','x_trans_key','x_version','x_refund','type'],
+    };
+
+    # query api uses different credentials
+    local $content->{'login'} = $content->{'reports_login'};
+    local $content->{'password'} = $content->{'reports_key'};
+
+    my $res = $self->_send_request($config,$content);
+    $self->is_success( defined $res->{'result'} ); # any result is a positive think for a query call
+    $self->order_number( $res->{'x_document'} );
+    $res;
+}
+
+sub _currencyexchange {
+    my ($self,$content) = @_;
+
+    my $config = {
+        url => 'https://'.$self->server.'/api_curl/query/currencyexchange',
+        control => [], # not used
+        post_data => ['x_login','x_trans_key','x_country','type'],
+    };
+
+    # query api uses different credentials
+    local $content->{'login'} = $content->{'reports_login'};
+    local $content->{'password'} = $content->{'reports_key'};
+
+    my $res = $self->_send_request($config,$content);
+    if ($res =~ /^\d+(:?\.\d+)$/ && $res > 0 ) {
+        $self->is_success( 1 );
+        $self->order_number( $res );
+    } else {
+        $self->is_success( 0 );
+        $self->order_number( undef );
+    }
+    $res;
+}
+
 sub _send_request {
     my ($self,$config,$content) = @_;
     my %content = %$content;
@@ -359,18 +404,28 @@ sub _send_request {
     my $url = $config->{'url'};
     $self->server_request( $url.'?'.$post_data ); # yeah it's in GET, but it's easy to read that way
     my $verify_ssl = 1;
-    my $response = HTTP::Tiny->new( verify_SSL=>$verify_ssl )->request('POST', $url, {
-        headers => {
-            'Content-Length' => length($post_data),
-            'Content-Type' => 'application/x-www-form-urlencoded',
-            'Accept' => 'application/json',
-        },
-        content => $post_data,
-    } );
+
+    my $response;
+    if (ref $self->{'mocked'} eq 'ARRAY' && scalar @{$self->{'mocked'}}) {
+        my $mock = shift @{$self->{'mocked'}};
+        die "Unexpected mock action" unless lc($mock->{'action'}) eq lc($content->{'action'});
+        die "Unexpected mock login" unless $mock->{'login'} eq $content{'login'};
+        $response->{'content'} = $mock->{'resp'};
+    } else {
+        $response = HTTP::Tiny->new( verify_SSL=>$verify_ssl )->request('POST', $url, {
+            headers => {
+                'Content-Length' => length($post_data),
+                'Content-Type' => 'application/x-www-form-urlencoded',
+                'Accept' => 'application/json',
+            },
+            content => $post_data,
+        } );
+    }
     $self->server_response( $response->{'content'} );
-    my $res = substr($response->{'content'},0,1) eq '{'
-        ? decode_json( $response->{'content'} )
-        : $self->_parse_xml_response( $response->{'content'}, $response->{'status'} ); # just in case
+    my $c = substr($response->{'content'},0,1);
+    my $res = $c eq '{' ? decode_json( $response->{'content'} )
+        : $c eq '<' ? $self->_parse_xml_response( $response->{'content'}, $response->{'status'} ) # just in case
+        : $response->{'content'}; # return raw (for currencyexchange)
     $res;
 }
 
