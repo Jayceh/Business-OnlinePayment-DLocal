@@ -87,39 +87,41 @@ SKIP: { # Auth/capture no token
             resp => 'ok_duplicate',
         } if $data->{'login'} eq 'mocked';
         my $ret = $client->submit();
-        skip 'Auth/Capture API is not enabled', 4 if $ret->{'error_code'}//'' eq '403';
-        ok($client->is_success, 'Transaction is_success');
-        ok($client->order_number, 'Transaction order_number found');
-        subtest 'A transaction result exists, as expected' => sub {
-            plan tests => 2;
-            isa_ok($ret,'HASH');
-            return unless ref $ret eq 'HASH';
-            cmp_ok($ret->{'result'}, 'eq', '11', 'Found the expected result');
-        };
-
-        skip 'Cannot capture without an auth', 1 unless $client->is_success && $client->order_number;
-        $data->{'order_number'} = $client->order_number;
-        subtest 'Capture' => sub {
-            plan tests => 3;
-            local $data->{'action'} = 'post authorization';
-            local $data->{'order_number'} = $client->order_number();
-            delete local $data->{'card_token'};
-            $client->content(%$data);
-            push @{$client->{'mocked'}}, {
-                action => 'billTransactions',
-                login => 'mocked',
-                resp => 'ok_duplicate',
-            } if $data->{'login'} eq 'mocked';
-            my $ret = $client->submit();
+        SKIP: {
+            skip 'Auth/Capture API is not enabled', 4 if $ret->{'error_code'}//'' eq '403';
             ok($client->is_success, 'Transaction is_success');
             ok($client->order_number, 'Transaction order_number found');
-            subtest 'A transaction error exists, as expected' => sub {
+            subtest 'A transaction result exists, as expected' => sub {
                 plan tests => 2;
                 isa_ok($ret,'HASH');
                 return unless ref $ret eq 'HASH';
-                cmp_ok($ret->{'result'}, 'eq', '9', 'Found the expected result');
+                cmp_ok($ret->{'result'}, 'eq', '11', 'Found the expected result');
             };
-        } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
+
+            skip 'Cannot capture without an auth', 1 unless $client->is_success && $client->order_number;
+            local $data->{'order_number'} = $client->order_number;
+            subtest 'Capture' => sub {
+                plan tests => 3;
+                local $data->{'action'} = 'post authorization';
+                local $data->{'order_number'} = $client->order_number();
+                delete local $data->{'card_token'};
+                $client->content(%$data);
+                push @{$client->{'mocked'}}, {
+                    action => 'billTransactions',
+                    login => 'mocked',
+                    resp => 'ok_duplicate',
+                } if $data->{'login'} eq 'mocked';
+                my $ret = $client->submit();
+                ok($client->is_success, 'Transaction is_success');
+                ok($client->order_number, 'Transaction order_number found');
+                subtest 'A transaction error exists, as expected' => sub {
+                    plan tests => 2;
+                    isa_ok($ret,'HASH');
+                    return unless ref $ret eq 'HASH';
+                    cmp_ok($ret->{'result'}, 'eq', '9', 'Found the expected result');
+                };
+            } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
+        }
     } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
 }
 
@@ -230,7 +232,6 @@ SKIP: { # Payment Status
             plan tests => 2;
             isa_ok($ret,'HASH');
             return unless ref $ret eq 'HASH';
-            # any result is technically legal, but this transaction should return a 9
             cmp_ok($ret->{'result'}, 'eq', '9', 'Found the expected result');
         };
     } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
