@@ -69,9 +69,6 @@ my $data = {
  cvv2                => '554',
  cpf => '00003456789',
  expiration          => '06/19',
- vindicia_nvp        => {
-     custom_test => 'BOP:DLocal unit test',
- }
 };
 
 

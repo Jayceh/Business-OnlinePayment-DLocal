@@ -4,7 +4,7 @@ use 5.010;
 use strict;
 use warnings;
 
-use Test::More tests => 7;
+use Test::More tests => 8;
 use Module::Runtime qw( use_module );
 use Time::HiRes;
 
@@ -67,17 +67,16 @@ my $data = {
  email               => 'bop@example.com',
  card_number         => '4556993263529121',
  cvv2                => '554',
- cpf => '00003456789',
+ cpf                 => '00003456789',
  expiration          => '06/19',
- vindicia_nvp        => {
-     custom_test => 'BOP:DLocal unit test',
- }
+ device_id           => '54hj4h5jh46hasjd',
 };
 
 
 SKIP: { # Sale no token (should decline)
     local $data->{'action'} = 'Normal Authorization';
     local $data->{'invoice_number'} = $data->{'invoice_number'}.'-no-token';
+    local $data->{'first_name'} = 'REJE';
     delete local $data->{'card_token'};
     $client->content(%$data);
     push @{$client->{'mocked'}}, {
@@ -95,6 +94,31 @@ SKIP: { # Sale no token (should decline)
             isa_ok($ret,'HASH');
             return unless ref $ret eq 'HASH';
             cmp_ok($ret->{'result'}, 'eq', '8', 'Found the expected error result');
+        };
+    } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
+}
+
+SKIP: { # Sale no token
+    local $data->{'action'} = 'Normal Authorization';
+    local $data->{'invoice_number'} = $data->{'invoice_number'}.'-no-token';
+    local $data->{'first_name'} = 'PEND';
+    delete local $data->{'card_token'};
+    $client->content(%$data);
+    push @{$client->{'mocked'}}, {
+        action => 'billTransactions',
+        login => 'mocked',
+        resp => 'ok_duplicate',
+    } if $data->{'login'} eq 'mocked';
+    my $ret = $client->submit();
+    subtest 'Normal Authorization, with full card' => sub {
+        plan tests => 3;
+        ok($client->is_success, 'Transaction is_success as expected');
+        ok($client->order_number, 'Transaction order_number found');
+        subtest 'A transaction error exists, as expected' => sub {
+            plan tests => 2;
+            isa_ok($ret,'HASH');
+            return unless ref $ret eq 'HASH';
+            cmp_ok($ret->{'result'}, 'eq', '9', 'Found the expected error result');
         };
     } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
 }
