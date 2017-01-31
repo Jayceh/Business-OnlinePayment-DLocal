@@ -73,105 +73,11 @@ sub test_transaction {
     return $self->{'test_transaction'};
 }
 
-# SAVE
-# SALE
+=method field_map
 
-=method SALE
-
-Mandatory parameters
-
-Field    Format    Description    One-Shot / Recurrent    Example    
-x_login    String (length: 32 chars)    Your merchant ID in Astropay    Both    AsGsd35Grf    1
-x_trans_key    String (length: 32 chars)    Your merchant password in Astropay    Both    D23weF2f4g    1
-x_version    String (Format: X.Y)    API version    Both    4.0    
-x_invoice    String (max. lenght 200 chars)    Unique transaction identification at the merchant site.    Both    Invoice1234    
-x_amount    Decimal (max. 2 decimal numbers)    Transaction amount (in the currency entered in the field “x_currency”)    Both    100.95    
-x_currency    String (length: 3 chars)    Currency code    Both    BRL    
-x_description    String (max. length: 200 chars)    A description of the payment    Both    Product 123    
-x_device_id    String    Buyer's device Id. See Device id.    Both    54hj4h5jh46hasjd    
-x_country    String (max. length: 2 chars)    User’s country. in ISO 3166-1 alpha-2 codes    One-Shot / Recurrent without token    BR    
-x_cpf    Number (max. 30 digits)    User’s personal identification number: CPF or CNPJ for Brazil, DNI for Argentina and ID for other countries.    One-Shot    123456789    
-x_name    String    User’s full name.    One-Shot    Ivan Lolivier    
-x_email    String    User’s email address.    One-Shot    santiago@astropay.com    
-cc_number    Number (16 digits)    User's credit card number    One-Shot / Recurrent without token    4111111111111111    
-cc_exp_month    Number (2 digits)    Credit card expiration month    One-Shot / Recurrent without token    02    
-cc_exp_year    Number (4 digits)    Credit card expiration year    One-Shot / Recurrent without token    2018    
-cc_cvv    Number (max length: 4 digits)    Credit card verification value    One-shot    425    
-cc_token    String    Token obtained in Save function    Recurrent    1aj2l3g4gj4fh5d5hh6d605    
-control    String    Control string    Both    JASG44DNNGIJ34IJ34OKOEWJNCV874Y4UY    2
-
-
- Control string
-
-$secretkey – secret key given to the merchant
-$invoice– unique transaction ID at merchant (x_invoice)
-$amount–payment amount (x_amount)
-$currency–payment currency (x_currency)
-$email– user’s email address (x_email)
-$number–credit card number (cc_number)
-$cvv–credit card cvv (cc_cvv)
-$month – credit card expiration month (cc_exp_month)
-$year – credit card expiration year (cc_exp_year)
-$cpf – user’s document (x_cpf)
-$country – country code (x_country)
-$token – credit card token (cc_token)
-
-Optional parameters
-
-Field    Format    Description    One-Shot / Recurrent    Example    Default
-x_bank    String (max. 3 digits)    Payment method code. See payment method codes.    One-Shot / Recurrent without token (only Mexico)    VI    
-cc_issuer    Number    Credit card issuer bank. See issuer bank codes.    One-Shot / Recurrent without token    105    
-cc_installments    Number    Number of installments    One-Shot    3    1
-cc_descriptor    String (max: 13 char)    Dynamic Descriptor    Both    AP Payment    
-x_ip    String    Buyer's IP address    Both    200.11.222.3    
-x_confirm    String    To be provided if the confirmation URL is different from the confirmation URL registered by the merchant.    Both    http://merchant/confirm    
-x_bdate    String    User’s date of birth (Format: YYYYMMDD)    One-Shot    19850812    
-x_iduser    Decimal (max. 20 chars)    Unique user id at the merchant side    One-Shot    user 123    
-x_address    String    User’s address    One-Shot    1225 Bonavita St.    
-x_zip    String    User’s zip/postal code    One-Shot    11300    
-x_city    String    User’s city    One-Shot    Sao Paulo    
-x_state    String (max. 3 chars)    User’s state. Brazilian 2 letter format    One-Shot    MO    
-x_phone    String    User’s phone number    One-Shot    099123456    
-x_merchant_id    String    Sub merchant identifier (only for PSPs). List of sub- merchants must be provided by PSP    Both    1    
-
-Response
-
-This function, if successful, returns a json with the following parameters:
-Field    Description    
-status    OK    
-desc    Response description message    
-control    Control string    1
-result    Transaction result. See possible results.    
-x_invoice    Unique transaction ID number at the merchant    
-x_document    Unique transaction ID number at AstroPay. This information should be stored for future use.    
-x_currency    Currency code    
-x_amount    Transaction amount (in the currency entered in the field “x_currency”).    
-x_amount_paid    The amount finally charged to the user, in local currency. It includes finance charges (if applies).    
-cc_descriptor    The transaction descriptor that will appear in the user’s statement    
-x_description    The description of the payment    
-cc_token    Token obtained in Save function    
-x_iduser    Unique user id at the merchant side    1 
-
-Control signature
-
-$secretkey – secret key given to the merchant
-$result – transaction result code
-$amount – payment amount (x_amount)
-$currency – payment currency (x_currency)
-$invoice – unique transaction ID at merchant (x_invoice)
-$document – unique transaction ID at AstroPay (x_document)
+Hash to map BOP standard names into the DLocal names
 
 =cut
-
-# REFUND
-# PAYMENT STATUS
-# REFUND STATUS
-# CURRENCY EXCHANGE
-# INSTALLMENTS
-
-sub build_control {
-    'TODO not built yet';
-}
 
 sub field_map {
     return (
@@ -218,12 +124,18 @@ sub field_map {
     );
 }
 
+=method content
+
+Manpilate the content to prepare for submittal
+
+=cut
+
 sub content {
     my $self = shift;
     my %content = $self->SUPER::content(@_);
 
     # Adjust common %content BOP format to what DLOCAL needs
-    if ($content{'expiration'} && $content{'expiration'} =~ /^(\d\d)\/(\d\d)/) {
+    if ($content{'expiration'} && $content{'expiration'} =~ /^(\d\d)\/?(\d\d)/) {
         $content{'expirationMM'} //= $1;
         $content{'expirationYY'} //= '20'.$2;
     }
@@ -237,6 +149,12 @@ sub content {
 
     return %content;
 }
+
+=method submit
+
+Submit the content to the API
+
+=cut
 
 sub submit {
     my $self = shift;
@@ -257,7 +175,19 @@ sub submit {
     }
 }
 
+=method _normal_authorization
+
+Maps a normal_authorization call to _authorization_only
+
+=cut
+
 sub _normal_authorization { shift->_authorization_only(@_); }
+
+=method _authorization_only
+
+Perform an auth_only. warning, this feature is only available in certain countries, and requires configuration from DLocal on your account. Unless you know you need to use this, please stay with the SALE
+
+=cut
 
 sub _authorization_only {
     my ($self,$content) = @_;
@@ -283,6 +213,12 @@ sub _authorization_only {
     $res;
 }
 
+=method _post_authorization
+
+Perform a Post authorization (Capture). Same caveats as Auth only.
+
+=cut
+
 sub _post_authorization{
     my ($self,$content) = @_;
 
@@ -297,6 +233,12 @@ sub _post_authorization{
     $self->order_number( $res->{'x_document'} // $res->{'x_auth_id'} ); # sale vs auth
     $res;
 }
+
+=method _tokenize
+
+Submit a credit card number to DLocal for tokenization, allowing for subsequent calls to be tokenized, and not require PAN storage
+
+=cut
 
 sub _tokenize {
     my ($self,$content) = @_;
@@ -313,6 +255,12 @@ sub _tokenize {
     $res;
 }
 
+=method _credit
+
+Perform a refund
+
+=cut
+
 sub _credit {
     my ($self,$content) = @_;
 
@@ -327,6 +275,12 @@ sub _credit {
     $self->order_number( $res->{'x_document'} );
     $res;
 }
+
+=method _paystatus
+
+Check the status of a payment that previously returned a PENDING state. Requires that you have provided the interface user/token in addition to the normal API ones.
+
+=cut
 
 sub _paystatus {
     my ($self,$content) = @_;
@@ -347,6 +301,12 @@ sub _paystatus {
     $res;
 }
 
+=method _refundstatus
+
+Check the status of a refund.
+
+=cut
+
 sub _refundstatus {
     my ($self,$content) = @_;
 
@@ -365,6 +325,12 @@ sub _refundstatus {
     $self->order_number( $res->{'x_document'} );
     $res;
 }
+
+=method _currencyexchange
+
+Get a current currency exchange value for price display
+
+=cut
 
 sub _currencyexchange {
     my ($self,$content) = @_;
@@ -389,6 +355,12 @@ sub _currencyexchange {
     }
     $res;
 }
+
+=method _send_request
+
+Formats your content and request data to actually transmit data
+
+=cut
 
 sub _send_request {
     my ($self,$config,$content) = @_;
@@ -430,6 +402,12 @@ sub _send_request {
         : $response->{'content'}; # return raw (for currencyexchange)
     $res;
 }
+
+=method _parse_xml_response
+
+Parsing if an XML response was received. Now that type=>'json' exists, will be phased out
+
+=cut
 
 sub _parse_xml_response {
     my ( $self, $page, $status_code ) = @_;
@@ -510,6 +488,8 @@ sub server_response_dangerous {
 
 =method set_defaults
 
+Setup default values
+
 =cut
 
 sub set_defaults {
@@ -548,4 +528,5 @@ sub set_defaults {
 
     $self->api_version('4.0')                   unless $self->api_version;
 }
+
 1;
