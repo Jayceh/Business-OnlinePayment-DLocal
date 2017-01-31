@@ -4,7 +4,7 @@ use 5.010;
 use strict;
 use warnings;
 
-use Test::More tests => 17;
+use Test::More tests => 20;
 use Module::Runtime qw( use_module );
 use Time::HiRes;
 
@@ -75,15 +75,15 @@ my $data = {
  invoice_number      => 'TEST-'.Time::HiRes::time(),
  authorization       => '123456',
  timestamp           => '2012-09-11T22:34:32.265Z',
- first_name          => 'Tofu',
- last_name           => 'Beast',
- address             => '123 Anystreet',
- city                => 'Anywhere',
- state               => 'UT',
- zip                 => '84058',
+ first_name          => 'Bop',
+ last_name           => 'Testing',
+ address             => '123',
+ city                => 'Santa Isabel',
+ state               => 'RJ',
+ zip                 => '0750000',
  country             => 'BR',
  currency            => 'USD',
- email               => 'bop@example.com',
+ email               => 'testing2@astropaycard.com',
  card_number         => $test_cards[0],
  cvv2                => '554',
  cpf                 => '00003456789',
@@ -91,6 +91,84 @@ my $data = {
  device_id           => '54hj4h5jh46hasjd',
 };
 
+SKIP: { # Sale no token (should decline)
+    local $data->{'action'} = 'Normal Authorization';
+    local $data->{'invoice_number'} = $data->{'invoice_number'}.'-no-token';
+    local $data->{'first_name'} = 'FUND';
+    local $data->{'last_name'} = '';
+    delete local $data->{'card_token'};
+    $client->content(%$data);
+    push @{$client->{'mocked'}}, {
+        action => 'billTransactions',
+        login => 'mocked',
+        resp => 'ok_duplicate',
+    } if $data->{'login'} eq 'mocked';
+    my $ret = $client->submit();
+    subtest 'Normal Authorization, with full card - FUND RESPONSE' => sub {
+        plan tests => 3;
+        ok(!$client->is_success, 'Transaction is_success failed as expected');
+        ok($client->order_number, 'Transaction order_number found');
+        subtest 'A transaction error exists, as expected' => sub {
+            plan tests => 3;
+            isa_ok($ret,'HASH');
+            return unless ref $ret eq 'HASH';
+            cmp_ok($ret->{'result'}, 'eq', '8', 'Found the expected error result');
+            cmp_ok($ret->{'desc'}, 'eq', 'cc_rejected_insufficient_amount', 'Found the expected error description');
+        };
+    } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
+}
+SKIP: { # Sale no token (should decline)
+    local $data->{'action'} = 'Normal Authorization';
+    local $data->{'invoice_number'} = $data->{'invoice_number'}.'-no-token';
+    local $data->{'first_name'} = 'CALL';
+    local $data->{'last_name'} = '';
+    delete local $data->{'card_token'};
+    $client->content(%$data);
+    push @{$client->{'mocked'}}, {
+        action => 'billTransactions',
+        login => 'mocked',
+        resp => 'ok_duplicate',
+    } if $data->{'login'} eq 'mocked';
+    my $ret = $client->submit();
+    subtest 'Normal Authorization, with full card - CALL RESPONSE' => sub {
+        plan tests => 3;
+        ok(!$client->is_success, 'Transaction is_success failed as expected');
+        ok($client->order_number, 'Transaction order_number found');
+        subtest 'A transaction error exists, as expected' => sub {
+            plan tests => 3;
+            isa_ok($ret,'HASH');
+            return unless ref $ret eq 'HASH';
+            cmp_ok($ret->{'result'}, 'eq', '8', 'Found the expected error result');
+            cmp_ok($ret->{'desc'}, 'eq', 'cc_rejected_call_for_authorize', 'Found the expected error description');
+        };
+    } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
+}
+
+SKIP: { # Sale no token (should decline)
+    local $data->{'action'} = 'Normal Authorization';
+    local $data->{'invoice_number'} = $data->{'invoice_number'}.'-no-token';
+    local $data->{'first_name'} = 'PEND';
+    local $data->{'last_name'} = '';
+    delete local $data->{'card_token'};
+    $client->content(%$data);
+    push @{$client->{'mocked'}}, {
+        action => 'billTransactions',
+        login => 'mocked',
+        resp => 'ok_duplicate',
+    } if $data->{'login'} eq 'mocked';
+    my $ret = $client->submit();
+    subtest 'Normal Authorization, with full card - PENDING RESULT' => sub {
+        plan tests => 3;
+        ok(!$client->is_success, 'Transaction is_success failed as expected');
+        ok($client->order_number, 'Transaction order_number found');
+        subtest 'A transaction error exists, as expected' => sub {
+            plan tests => 2;
+            isa_ok($ret,'HASH');
+            return unless ref $ret eq 'HASH';
+            cmp_ok($ret->{'result'}, 'eq', '7', 'Found the expected error result');
+        };
+    } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
+}
 
 SKIP: { # Sale no token (should decline)
     local $data->{'action'} = 'Normal Authorization';
@@ -105,7 +183,7 @@ SKIP: { # Sale no token (should decline)
         resp => 'ok_duplicate',
     } if $data->{'login'} eq 'mocked';
     my $ret = $client->submit();
-    subtest 'Normal Authorization, with full card' => sub {
+    subtest 'Normal Authorization, with full card - REJECTED RESULT' => sub {
         plan tests => 3;
         ok(!$client->is_success, 'Transaction is_success failed as expected');
         ok($client->order_number, 'Transaction order_number found');
