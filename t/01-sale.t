@@ -4,7 +4,7 @@ use 5.010;
 use strict;
 use warnings;
 
-use Test::More tests => 8;
+use Test::More tests => 17;
 use Module::Runtime qw( use_module );
 use Time::HiRes;
 
@@ -39,6 +39,25 @@ plan skip_all => 'No credentials set in the environment.'
 my $client = new_ok( use_module('Business::OnlinePayment'), ['DLocal'] );
 $client->test_transaction(1);    # test, dont really charge
 
+my @test_cards = (
+    '6363687851866592',
+    '6062823125988953',
+    #'5300323635297148',
+    '3696656326587732', # DC
+    '4312522698854138', # VI
+    '3432524265896994', # AMEX
+    '5578390741038760', # MC
+
+    '5078601870000123', # aura
+    '5895626746595650', # naranja
+    '5200533989557118', # nativa
+    #'6034883265619896', # tarjeta
+    #'6034932528973614', # cencosud
+    #'6271701225979642', # cabal
+    '5011054488597827', # Argencard
+);
+
+
 my $data = {
  login          => $username,
  password       => $password,
@@ -65,7 +84,7 @@ my $data = {
  country             => 'BR',
  currency            => 'USD',
  email               => 'bop@example.com',
- card_number         => '4556993263529121',
+ card_number         => $test_cards[0],
  cvv2                => '554',
  cpf                 => '00003456789',
  expiration          => '06/19',
@@ -77,6 +96,7 @@ SKIP: { # Sale no token (should decline)
     local $data->{'action'} = 'Normal Authorization';
     local $data->{'invoice_number'} = $data->{'invoice_number'}.'-no-token';
     local $data->{'first_name'} = 'REJE';
+    local $data->{'last_name'} = '';
     delete local $data->{'card_token'};
     $client->content(%$data);
     push @{$client->{'mocked'}}, {
@@ -101,26 +121,28 @@ SKIP: { # Sale no token (should decline)
 SKIP: { # Sale no token
     local $data->{'action'} = 'Normal Authorization';
     local $data->{'invoice_number'} = $data->{'invoice_number'}.'-no-token';
-    local $data->{'first_name'} = 'PEND';
     delete local $data->{'card_token'};
-    $client->content(%$data);
-    push @{$client->{'mocked'}}, {
-        action => 'billTransactions',
-        login => 'mocked',
-        resp => 'ok_duplicate',
-    } if $data->{'login'} eq 'mocked';
-    my $ret = $client->submit();
-    subtest 'Normal Authorization, with full card' => sub {
-        plan tests => 3;
-        ok($client->is_success, 'Transaction is_success as expected');
-        ok($client->order_number, 'Transaction order_number found');
-        subtest 'A transaction error exists, as expected' => sub {
-            plan tests => 2;
-            isa_ok($ret,'HASH');
-            return unless ref $ret eq 'HASH';
-            cmp_ok($ret->{'result'}, 'eq', '9', 'Found the expected error result');
-        };
-    } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
+    foreach my $card (@test_cards){
+        local $data->{'card_number'} = $card;
+        $client->content(%$data);
+        push @{$client->{'mocked'}}, {
+            action => 'billTransactions',
+            login => 'mocked',
+            resp => 'ok_duplicate',
+        } if $data->{'login'} eq 'mocked';
+        my $ret = $client->submit();
+        subtest 'Normal Authorization, with full card' => sub {
+            plan tests => 3;
+            ok($client->is_success, 'Transaction is_success as expected');
+            ok($client->order_number, 'Transaction order_number found');
+            subtest 'A transaction error exists, as expected' => sub {
+                plan tests => 2;
+                isa_ok($ret,'HASH');
+                return unless ref $ret eq 'HASH';
+                cmp_ok($ret->{'result'}, 'eq', '9', 'Found the expected error result');
+            };
+        } or diag explain "Request:\n".$client->server_request,"\nResponse:\n".$client->server_response;
+    }
 }
 
 SKIP: { # Save
