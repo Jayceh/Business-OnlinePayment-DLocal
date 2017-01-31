@@ -1,0 +1,113 @@
+=pod
+
+=head1 NAME
+
+Business::OnlinePayment::DLocal - Business::OnlinePayment::DLocal - DLocal (astropay) backend for Business::OnlinePayment
+
+=head1 VERSION
+
+version 0.001
+
+=head1 METHODS
+
+=head2 test_transaction
+
+Get/set the server used for processing transactions.  Possible values are Live, Certification, and Sandbox
+Default: Live
+
+  #Live
+  $self->test_transaction(0);
+
+  #Certification
+  $self->test_transaction(1);
+
+=head2 field_map
+
+Hash to map BOP standard names into the DLocal names
+
+=head2 content
+
+Manpilate the content to prepare for submittal
+
+=head2 submit
+
+Submit the content to the API
+
+=head2 _normal_authorization
+
+Maps a normal_authorization call to _authorization_only
+
+=head2 _authorization_only
+
+Perform an auth_only. warning, this feature is only available in certain countries, and requires configuration from DLocal on your account. Unless you know you need to use this, please stay with the SALE
+
+=head2 _post_authorization
+
+Perform a Post authorization (Capture). Same caveats as Auth only.
+
+=head2 _tokenize
+
+Submit a credit card number to DLocal for tokenization, allowing for subsequent calls to be tokenized, and not require PAN storage
+
+=head2 _credit
+
+Perform a refund
+
+=head2 _paystatus
+
+Check the status of a payment that previously returned a PENDING state. Requires that you have provided the interface user/token in addition to the normal API ones.
+
+=head2 _refundstatus
+
+Check the status of a refund.
+
+=head2 _currencyexchange
+
+Get a current currency exchange value for price display
+
+=head2 _send_request
+
+Formats your content and request data to actually transmit data
+
+=head2 _parse_xml_response
+
+Parsing if an XML response was received. Now that type=>'json' exists, will be phased out
+
+=head2 server_request
+
+Returns the complete request that was sent to the server.  The request has been stripped of card_num, cvv2, and password.  So it should be safe to log.
+
+=head2 server_request_dangerous
+
+Returns the complete request that was sent to the server.  This could contain data that is NOT SAFE to log.  It should only be used in a test environment, or in a PCI compliant manner.
+
+=head2 server_response
+
+Returns the complete response from the server.  The response has been stripped of card_num, cvv2, and password.  So it should be safe to log.
+
+=head2 server_response_dangerous
+
+Returns the complete response from the server.  This could contain data that is NOT SAFE to log.  It should only be used in a test environment, or in a PCI compliant manner.
+
+=head2 set_defaults
+
+Setup default values
+
+=head1 AUTHOR
+
+Jason (Jayce^) Hall <jayce@lug-nut.com>
+
+=head1 CONTRIBUTOR
+
+=for stopwords Jason Terry
+
+Jason Terry <jterry@bluehost.com>
+
+=head1 COPYRIGHT AND LICENSE
+
+This software is copyright (c) 2017 by Jason (Jayce^) Hall.
+
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
+
+=cut
