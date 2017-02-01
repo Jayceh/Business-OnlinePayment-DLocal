@@ -4,7 +4,7 @@ use 5.010;
 use strict;
 use warnings;
 
-use Test::More tests => 6;
+use Test::More;
 use Module::Runtime qw( use_module );
 use Time::HiRes;
 
@@ -30,6 +30,14 @@ if ($username eq 'mocked') {
     diag '';
 }
 
+if ( $username ne 'mocked' && $password ne 'mocked') {
+    plan tests => 6;
+} else {
+    plan skip_all => 'No credentials set in the environment.'
+      . ' Set PERL_BUSINESS_DLOCAL_USERNAME and '
+      . ' PERL_BUSINESS_DLOCAL_SECRET and '
+      . 'PERL_BUSINESS_DLOCAL_PASSWORD to run this test.'
+}
 my $client = new_ok( use_module('Business::OnlinePayment'), ['DLocal'] );
 $client->test_transaction(1);    # test, dont really charge
 

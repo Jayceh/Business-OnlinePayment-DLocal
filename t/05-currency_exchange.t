@@ -4,7 +4,7 @@ use 5.010;
 use strict;
 use warnings;
 
-use Test::More tests => 3;
+use Test::More;
 use Module::Runtime qw( use_module );
 use Time::HiRes;
 
@@ -28,6 +28,15 @@ if ($username eq 'mocked' || $reports_username eq 'mocked') {
     diag 'export PERL_BUSINESS_DLOCAL_REPORTS_KEY=your_reports_key';
     diag '';
     diag '';
+}
+
+if ( $username ne 'mocked' && $password ne 'mocked') {
+    plan tests => 3;
+} else {
+    plan skip_all => 'No credentials set in the environment.'
+      . ' Set PERL_BUSINESS_DLOCAL_USERNAME and '
+      . ' PERL_BUSINESS_DLOCAL_SECRET and '
+      . 'PERL_BUSINESS_DLOCAL_PASSWORD to run this test.'
 }
 
 my $client = new_ok( use_module('Business::OnlinePayment'), ['DLocal'] );
