@@ -208,6 +208,8 @@ sub _authorization_only {
     };
 
     my $res = $self->_send_request($config,$content);
+    $self->error_message( $res->{'desc'} );
+    $self->result_code( $res->{'error_code'} );
     $self->is_success( defined $res->{'result'} && $res->{'result'} =~ /^9|11$/ ? 1 : 0 );
     $self->order_number( $res->{'x_document'} // $res->{'x_auth_id'} ); # sale vs auth
     $res;
@@ -229,6 +231,8 @@ sub _post_authorization{
     };
 
     my $res = $self->_send_request($config,$content);
+    $self->error_message( $res->{'desc'} );
+    $self->result_code( $res->{'error_code'} );
     $self->is_success( defined $res->{'result'} && $res->{'result'} =~ /^9|11$/ ? 1 : 0 );
     $self->order_number( $res->{'x_document'} // $res->{'x_auth_id'} ); # sale vs auth
     $res;
@@ -250,6 +254,8 @@ sub _tokenize {
     };
 
     my $res = $self->_send_request($config,$content);
+    $self->error_message( $res->{'desc'} );
+    $self->result_code( $res->{'error_code'} );
     $self->is_success( $res->{'cc_token'} ? 1 : 0 );
     $self->card_token( $res->{'cc_token'} );
     $res;
@@ -271,6 +277,8 @@ sub _credit {
     };
 
     my $res = $self->_send_request($config,$content);
+    $self->error_message( $res->{'desc'} );
+    $self->result_code( $res->{'error_code'} );
     $self->is_success( defined $res->{'result'} && $res->{'result'} eq '1' ? 1 : 0 );
     $self->order_number( $res->{'x_document'} );
     $res;
@@ -296,6 +304,8 @@ sub _paystatus {
     local $content->{'password'} = $content->{'reports_key'};
 
     my $res = $self->_send_request($config,$content);
+    $self->error_message( $res->{'desc'} );
+    $self->result_code( $res->{'error_code'} );
     $self->is_success( defined $res->{'result'} ); # any result is a positive think for a query call
     $self->order_number( $res->{'x_document'} );
     $res;
@@ -321,6 +331,8 @@ sub _refundstatus {
     local $content->{'password'} = $content->{'reports_key'};
 
     my $res = $self->_send_request($config,$content);
+    $self->error_message( $res->{'desc'} );
+    $self->result_code( $res->{'error_code'} );
     $self->is_success( defined $res->{'result'} ); # any result is a positive think for a query call
     $self->order_number( $res->{'x_document'} );
     $res;
