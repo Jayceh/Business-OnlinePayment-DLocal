@@ -61,11 +61,11 @@ sub test_transaction {
     if (! defined $testMode) { $testMode = $self->{'test_transaction'} || 0; }
     $self->{'test_transaction'} = $testMode;
     if($testMode) {
-        $self->server('sandbox.astropaycard.com');
+        $self->server('sandbox.dlocal.com');
         $self->port('443');
         $self->path('/api_curl/cc/sale');
     } else {
-        $self->server('astropaycard.com');
+        $self->server('api.dlocal.com');
         $self->port('443');
         $self->path('/api_curl/cc/sale');
     }
@@ -379,7 +379,7 @@ sub _send_request {
     my %remap_fields = $self->field_map();
 
     $self->_dlocal_scrubber_add_card($content{'card_number'});
-    scrubber_add_scrubber({'cc_cvv='.$content{'cvv2'}=>'cc_cvv=DELETED'});
+    scrubber_add_scrubber({'cc_cvv='.$content{'cvv2'}=>'cc_cvv=DELETED'}) if defined $content{'cvv2'};
 
     my $message = '';
     foreach my $key ( @{$config->{'control'}} ) { $message .= $content{$remap_fields{$key}}//''; }
